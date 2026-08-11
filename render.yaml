@@ -1,0 +1,125 @@
+# Render blueprint for the Draper shadow-mode service.
+# One web service (webhook + review UI), one managed Postgres, two cron jobs.
+# Set the secret env vars (TENANT_ID, CLIENT_ID, CLIENT_SECRET, ANTHROPIC_API_KEY,
+# GRAPH_CLIENT_STATE, CRON_SECRET, MAILBOX_*) in the Render dashboard, not here.
+
+databases:
+  - name: draper-shadow-db
+    databaseName: draper_shadow
+    plan: basic-256mb
+
+services:
+  - type: web
+    name: draper-shadow
+    runtime: node
+    plan: starter
+    buildCommand: npm ci && npm run build && npx prisma migrate deploy
+    startCommand: npm run start
+    healthCheckPath: /api/health
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: draper-shadow-db
+          property: connectionString
+      - key: DIRECT_URL
+        fromDatabase:
+          name: draper-shadow-db
+          property: connectionString
+      - key: RUN_MODE
+        value: shadow
+      - key: NODE_ENV
+        value: production
+      - key: PUBLIC_URL
+        sync: false
+      - key: TENANT_ID
+        sync: false
+      - key: CLIENT_ID
+        sync: false
+      - key: CLIENT_SECRET
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: ANTHROPIC_MODEL
+        value: claude-sonnet-5
+      - key: GRAPH_CLIENT_STATE
+        sync: false
+      - key: CRON_SECRET
+        sync: false
+      - key: MAILBOX_SALES
+        sync: false
+      - key: MAILBOX_LETTINGS
+        sync: false
+      - key: MAILBOX_HELLO
+        sync: false
+
+  # Renew Graph subscriptions well inside their <3-day expiry.
+  - type: cron
+    name: draper-shadow-renew
+    runtime: node
+    plan: starter
+    schedule: "0 */6 * * *"
+    buildCommand: npm ci
+    startCommand: npm run subscriptions:renew
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: draper-shadow-db
+          property: connectionString
+      - key: DIRECT_URL
+        fromDatabase:
+          name: draper-shadow-db
+          property: connectionString
+      - key: RUN_MODE
+        value: shadow
+      - key: PUBLIC_URL
+        sync: false
+      - key: TENANT_ID
+        sync: false
+      - key: CLIENT_ID
+        sync: false
+      - key: CLIENT_SECRET
+        sync: false
+      - key: GRAPH_CLIENT_STATE
+        sync: false
+      - key: MAILBOX_SALES
+        sync: false
+      - key: MAILBOX_LETTINGS
+        sync: false
+      - key: MAILBOX_HELLO
+        sync: false
+
+  # Delta backstop: catch any notifications Graph didn't deliver.
+  - type: cron
+    name: draper-shadow-delta
+    runtime: node
+    plan: starter
+    schedule: "*/15 * * * *"
+    buildCommand: npm ci
+    startCommand: npm run backstop:delta
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: draper-shadow-db
+          property: connectionString
+      - key: DIRECT_URL
+        fromDatabase:
+          name: draper-shadow-db
+          property: connectionString
+      - key: RUN_MODE
+        value: shadow
+      - key: TENANT_ID
+        sync: false
+      - key: CLIENT_ID
+        sync: false
+      - key: CLIENT_SECRET
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: ANTHROPIC_MODEL
+        value: claude-sonnet-5
+      - key: MAILBOX_SALES
+        sync: false
+      - key: MAILBOX_LETTINGS
+        sync: false
+      - key: MAILBOX_HELLO
+        sync: false

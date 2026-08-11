@@ -1,0 +1,244 @@
+// Draper London — Enquiry Automation v1 (Shadow Mode)
+// The database IS the deliverable (spec §3, §13). Everything the pipeline decides
+// is recorded here; nothing is ever sent.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  // App runtime uses the pooled connection (Supabase pooler / port 6543).
+  url       = env("DATABASE_URL")
+  // Migrations need a direct connection (Supabase direct / port 5432).
+  // For a plain local Postgres, point DIRECT_URL at the same value as DATABASE_URL.
+  directUrl = env("DIRECT_URL")
+}
+
+enum Mailbox {
+  sales
+  lettings
+  hello
+}
+
+enum Source {
+  rightmove
+  zoopla
+  website
+  direct
+  unknown
+}
+
+enum ParseStatus {
+  full
+  partial
+  failed
+}
+
+// Which location the applicant's real email was resolved from (spec §6.2).
+enum EmailResolvedFrom {
+  from
+  reply_to
+  body
+  none
+}
+
+enum Intent {
+  viewing_request
+  valuation_request
+  landlord_enquiry
+  tenant_or_maintenance
+  supplier
+  recruitment
+  press
+  spam
+  other
+}
+
+enum SuppressionReason {
+  auto_responder_guard
+  one_reply_per_thread
+  human_replied_first
+  ineligible_intent
+}
+
+// One row per inbound message. Idempotent on graphMessageId (spec §5).
+model Enquiry {
+  id             String  @id @default(cuid())
+  graphMessageId String  @unique
+  mailbox        Mailbox
+  receivedAt     DateTime // UTC, from the message (not processing time)
+  source         Source  @default(unknown)
+
+  applicantName  String?
+  applicantEmail String?
+  applicantPhone String?
+
+  propertyReference String?
+  propertyAddress   String?
+  propertyUrl       String?
+
+  messageBody String? // free text the applicant actually wrote
+
+  rawSubject  String
+  rawHeaders  Json
+  rawBodyHtml String  @default("")
+  rawBodyText String  @default("")
+
+  replyTo             String?
+  isReplyAllRequired  Boolean? // §6.3, determined empirically from human replies
+  threadId            String? // Graph conversationId
+
+  parseStatus     ParseStatus       @default(failed)
+  parseNotes      String[]          @default([])
+  emailResolvedFrom EmailResolvedFrom @default(none)
+
+  // Classification (§6.5)
+  intent           Intent?
+  confidence       Float?
+  classifierRaw    Json? // raw model output kept for calibration
+
+  // Grading controls (§10). Filled by Innate during the shadow week.
+  gradedClassificationCorrect Boolean?
+  gradingNote                 String?
+
+  decision Decision?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([mailbox])
+  @@index([intent])
+  @@index([parseStatus])
+  @@index([receivedAt])
+  @@index([threadId])
+  @@index([applicantEmail])
+}
+
+// One row per enquiry. Every rule is evaluated and RECORDED, never enforced (§8).
+model Decision {
+  id        String  @id @default(cuid())
+  enquiryId String  @unique
+  enquiry   Enquiry @relation(fields: [enquiryId], references: [id], onDelete: Cascade)
+
+  eligible        Boolean @default(false)
+  ineligibleReason String?
+
+  suppressed        Boolean            @default(false)
+  suppressionReason SuppressionReason?
+
+  duplicateOf String? // enquiry id this was grouped under (30-min window)
+
+  // Both send-window policies computed and stored (§8). Client hasn't decided.
+  wouldSendAtImmediate DateTime?
+  wouldSendAtHeld      DateTime?
+
+  generatedBody      String? // the body that WOULD have been sent. Never sent.
+  generationMetadata Json? // exact prompt, model, version, params (§7.2)
+
+  // Deferred-interface audit trail (§9). All no-op/log-only in v1.
+  transportRecord  Json? // what NoOpTransport was asked to "send"
+  assignmentRecord Json? // what LoggingAssignmentSink recorded
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Graph change-notification subscriptions, one per mailbox. Renewed by cron (§5).
+model Subscription {
+  id             String   @id // Graph subscription id
+  mailbox        Mailbox
+  resource       String
+  expiresAt      DateTime
+  clientState    String
+  notificationUrl String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([mailbox])
+}
+
+// Persisted delta links so the 15-min backstop resumes where it left off (§5).
+model DeltaState {
+  mailbox   Mailbox  @id
+  deltaLink String
+  updatedAt DateTime @updatedAt
+}
+
+// ── Property database ────────────────────────────────────────────────────────
+// Synced from Draper's own public site feed (wp-json/wp/v2/property). Powers
+// "similar property" suggestions (phase 2) and enquiry enrichment. Read-only sync.
+
+enum Channel {
+  sales
+  lettings
+  commercial
+  other
+}
+
+enum PropertyStatus {
+  for_sale
+  to_let
+  under_offer // SSTC / under offer / let agreed
+  sold
+  let
+  withdrawn
+  other
+}
+
+model Property {
+  id     String @id @default(cuid())
+  wpId   Int    @unique // WordPress post id, the natural key from the feed
+  slug   String
+  url    String
+
+  reference     String? // site reference_number (may differ from portal ref)
+  channel       Channel        @default(other)
+  department    String? // raw e.g. "residential-sales"
+  status        PropertyStatus @default(other)
+  availability  String? // raw e.g. "For Sale" / "Sold" / "Under Offer"
+  onMarket      Boolean        @default(false)
+
+  propertyType   String?
+  tenure         String?
+  priceActual    Int? // numeric price for range matching
+  priceQualifier String? // "Asking Price" / "Guide Price"
+  priceFormatted String?
+  currency       String?
+
+  bedrooms       Int?
+  bathrooms      Int?
+  receptionRooms Int?
+
+  title         String?
+  addressStreet String?
+  addressArea   String? // "location", e.g. "Hampstead, London"
+  postcode      String?
+  outcode       String? // "NW3" — the postcode district, for cheap proximity
+  latitude      Float?
+  longitude     Float?
+
+  features    String[] @default([])
+  description String?
+  imageUrls   String[] @default([])
+
+  officeName     String?
+  negotiatorName String?
+
+  modifiedAt DateTime? // from the feed (source-of-truth change time)
+  firstSeen  DateTime  @default(now())
+  lastSeen   DateTime  @default(now())
+  active     Boolean   @default(true) // present in the most recent sync
+  raw        Json
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([channel])
+  @@index([status])
+  @@index([priceActual])
+  @@index([bedrooms])
+  @@index([outcode])
+  @@index([reference])
+  @@index([active])
+}

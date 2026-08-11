@@ -1,0 +1,20 @@
+# dependencies
+/node_modules
+
+# next
+/.next
+/out
+next-env.d.ts
+
+# env / secrets — NEVER commit. Graph creds are tenant-wide credentials for a client's email.
+.env
+.env.local
+.env.*.local
+
+# prisma local
+/prisma/*.db
+
+# misc
+.DS_Store
+*.log
+/coverage
