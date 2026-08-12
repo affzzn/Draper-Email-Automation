@@ -9,6 +9,8 @@ export interface MatchCriteria {
   excludePropertyId?: string;
   limit?: number;
   pricePct?: number; // default 0.20 (±20%)
+  budgetMax?: number | null; // hard ceiling from the applicant's stated budget
+  minScore?: number; // quality bar; matches below this are dropped
 }
 
 export interface ScoredProperty {
@@ -27,7 +29,9 @@ export async function findSimilar(c: MatchCriteria): Promise<ScoredProperty[]> {
   const limit = c.limit ?? 3;
 
   const priceLo = c.priceActual ? Math.round(c.priceActual * (1 - pricePct)) : undefined;
-  const priceHi = c.priceActual ? Math.round(c.priceActual * (1 + pricePct)) : undefined;
+  let priceHi = c.priceActual ? Math.round(c.priceActual * (1 + pricePct)) : undefined;
+  // Respect a stated budget as a hard ceiling (never suggest above it).
+  if (c.budgetMax) priceHi = priceHi ? Math.min(priceHi, c.budgetMax) : c.budgetMax;
 
   const candidates = await prisma.property.findMany({
     where: {
@@ -35,8 +39,8 @@ export async function findSimilar(c: MatchCriteria): Promise<ScoredProperty[]> {
       channel: c.channel,
       status: { in: [...AVAILABLE] },
       ...(c.excludePropertyId ? { id: { not: c.excludePropertyId } } : {}),
-      ...(priceLo !== undefined && priceHi !== undefined
-        ? { priceActual: { gte: priceLo, lte: priceHi } }
+      ...(priceLo !== undefined || priceHi !== undefined
+        ? { priceActual: { ...(priceLo !== undefined ? { gte: priceLo } : {}), ...(priceHi !== undefined ? { lte: priceHi } : {}) } }
         : {}),
       ...(c.bedrooms
         ? { bedrooms: { gte: c.bedrooms - 1, lte: c.bedrooms + 1 } }
@@ -72,7 +76,38 @@ export async function findSimilar(c: MatchCriteria): Promise<ScoredProperty[]> {
     return { property: p, score, reasons };
   });
 
-  return scored.sort((a, b) => b.score - a.score).slice(0, limit);
+  const minScore = c.minScore ?? 0;
+  return scored
+    .filter((s) => s.score >= minScore)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit);
+}
+
+// Pick 1-2 genuinely-relevant alternatives for an enquiry. Quality bar applied:
+// if nothing scores well, returns [] (a weak suggestion reads as automated).
+export async function alternativesForEnquiry(opts: {
+  channel: Channel;
+  property: Property | null; // the enquired property, if we resolved it
+  budgetMax: number | null;
+  bedroomsHint: number | null; // e.g. parsed from "3+ bedroom property"
+  outcodeHint: string | null; // e.g. from the enquiry address
+  limit?: number;
+}): Promise<ScoredProperty[]> {
+  const priceSeed = opts.property?.priceActual ?? opts.budgetMax ?? null;
+  const bedrooms = opts.property?.bedrooms ?? opts.bedroomsHint;
+  const outcode = opts.property?.outcode ?? opts.outcodeHint;
+  if (priceSeed === null && bedrooms === null) return []; // nothing to anchor on
+
+  return findSimilar({
+    channel: opts.channel,
+    priceActual: priceSeed,
+    bedrooms,
+    outcode,
+    excludePropertyId: opts.property?.id,
+    budgetMax: opts.budgetMax,
+    limit: opts.limit ?? 2,
+    minScore: 3, // require a real match, not just "in the same channel"
+  });
 }
 
 // Convenience: given one of our own properties (by reference), find its neighbours.

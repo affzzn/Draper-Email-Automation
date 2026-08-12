@@ -1,20 +1,19 @@
-import { prisma } from "@/lib/prisma";
 import GradeControls from "./components/GradeControls";
 import RawViewer from "./components/RawViewer";
-import type { Prisma } from "@prisma/client";
+import { getEnquiryRows, isReadOnly } from "@/lib/store";
 
 export const dynamic = "force-dynamic";
 
 const LONDON = "Europe/London";
-function fmt(d: Date | null | undefined): string {
-  if (!d) return "";
+function fmt(iso: string | null | undefined): string {
+  if (!iso) return "";
   return new Intl.DateTimeFormat("en-GB", {
     timeZone: LONDON,
     day: "2-digit",
     month: "short",
     hour: "2-digit",
     minute: "2-digit",
-  }).format(d);
+  }).format(new Date(iso));
 }
 
 function nullable(v: string | null | undefined) {
@@ -31,37 +30,29 @@ export default async function Page({
   searchParams: Promise<SP>;
 }) {
   const sp = await searchParams;
+  const all = await getEnquiryRows();
 
-  const where: Prisma.EnquiryWhereInput = {};
-  if (sp.mailbox) where.mailbox = sp.mailbox as Prisma.EnquiryWhereInput["mailbox"];
-  if (sp.intent) where.intent = sp.intent as Prisma.EnquiryWhereInput["intent"];
-  if (sp.parseStatus)
-    where.parseStatus = sp.parseStatus as Prisma.EnquiryWhereInput["parseStatus"];
-  if (sp.eligible === "yes") where.decision = { eligible: true };
-  if (sp.eligible === "no") where.decision = { eligible: false };
+  const filtered = all.filter((e) => {
+    if (sp.mailbox && e.mailbox !== sp.mailbox) return false;
+    if (sp.intent && e.intent !== sp.intent) return false;
+    if (sp.parseStatus && e.parseStatus !== sp.parseStatus) return false;
+    if (sp.eligible === "yes" && !e.decision?.eligible) return false;
+    if (sp.eligible === "no" && e.decision?.eligible) return false;
+    return true;
+  });
 
-  const [enquiries, total, eligibleCount, viewingCount, draftCount] =
-    await Promise.all([
-      prisma.enquiry.findMany({
-        where,
-        include: { decision: true },
-        orderBy: { receivedAt: "desc" },
-        take: 500,
-      }),
-      prisma.enquiry.count(),
-      prisma.decision.count({ where: { eligible: true } }),
-      prisma.enquiry.count({ where: { intent: "viewing_request" } }),
-      prisma.decision.count({ where: { generatedBody: { not: null } } }),
-    ]);
+  const total = all.length;
+  const viewingCount = all.filter((e) => e.intent === "viewing_request").length;
+  const eligibleCount = all.filter((e) => e.decision?.eligible).length;
+  const draftCount = all.filter((e) => e.decision?.generatedBody).length;
 
+  const enquiries = filtered.slice(0, 500);
   const exportQs = new URLSearchParams(sp as Record<string, string>).toString();
+  const readOnly = isReadOnly();
 
   return (
     <div className="wrap">
-      <header className="top">
-        <h1>Draper London Enquiries</h1>
-        <span className="badge">SHADOW MODE · NOTHING SENDS</span>
-      </header>
+      <h1 className="pagetitle">Enquiries</h1>
 
       <div className="stats">
         <div className="stat"><div className="n">{total}</div><div className="l">Enquiries</div></div>
@@ -145,20 +136,14 @@ export default async function Page({
                     <td>
                       <span
                         className={`pill ${
-                          e.parseStatus === "full"
-                            ? "green"
-                            : e.parseStatus === "partial"
-                            ? "amber"
-                            : "red"
+                          e.parseStatus === "full" ? "green" : e.parseStatus === "partial" ? "amber" : "red"
                         }`}
                       >
                         {e.parseStatus}
                       </span>
                       {e.parseNotes.length > 0 && (
                         <ul className="notes">
-                          {e.parseNotes.map((n, i) => (
-                            <li key={i}>{n}</li>
-                          ))}
+                          {e.parseNotes.map((n, i) => (<li key={i}>{n}</li>))}
                         </ul>
                       )}
                     </td>
@@ -221,6 +206,7 @@ export default async function Page({
                         enquiryId={e.id}
                         initialCorrect={e.gradedClassificationCorrect}
                         initialNote={e.gradingNote}
+                        readOnly={readOnly}
                       />
                     </td>
                   </tr>

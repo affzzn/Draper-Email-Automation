@@ -1,0 +1,40 @@
+name: Property sync
+
+# Pull Draper's public property feed into the database once a day.
+# Read-only on their site (~2 requests). Idempotent. Needs only the DB secrets.
+
+on:
+  schedule:
+    - cron: "0 6 * * *" # 06:00 UTC daily (GitHub may delay a few minutes)
+  workflow_dispatch: {} # lets you run it manually from the Actions tab
+
+concurrency:
+  group: property-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      DIRECT_URL: ${{ secrets.DIRECT_URL }}
+      DRAPER_API_BASE: https://draperlondon.com
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Apply migrations (creates the Property table if missing)
+        run: npx prisma migrate deploy
+
+      - name: Sync properties
+        run: npm run properties:sync

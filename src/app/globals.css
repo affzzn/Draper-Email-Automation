@@ -31,10 +31,26 @@ html, body {
   -webkit-font-smoothing: antialiased;
 }
 
-.wrap { padding: 28px 32px 96px; }
+.wrap { padding: 20px 32px 96px; }
 
-header.top { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
-header.top h1 { font-size: 17px; font-weight: 650; letter-spacing: -0.01em; margin: 0; }
+/* Top navigation */
+.topnav {
+  display: flex; align-items: center; justify-content: space-between; gap: 20px;
+  padding: 14px 32px; border-bottom: 1px solid var(--border);
+  background: var(--panel); position: sticky; top: 0; z-index: 20;
+}
+.topnav .brand { display: flex; align-items: center; gap: 12px; }
+.topnav .brandname { font-size: 15px; font-weight: 680; letter-spacing: -0.01em; }
+.topnav .tabs { display: flex; gap: 4px; }
+.topnav .tab {
+  text-decoration: none; color: var(--muted); font-size: 13px; font-weight: 550;
+  padding: 7px 14px; border-radius: 8px;
+}
+.topnav .tab:hover { background: var(--panel-2); color: var(--text); }
+.topnav .tab.active { background: var(--text); color: #fff; }
+
+.pagetitle { font-size: 20px; font-weight: 680; letter-spacing: -0.02em; margin: 8px 0 18px; }
+
 .badge {
   font-size: 10px; font-weight: 600; letter-spacing: 0.06em;
   color: var(--muted); background: var(--gray-bg);
@@ -86,6 +102,23 @@ td.null, .null { color: var(--faint); }
 .pill.green { background: var(--green-bg); color: var(--green-fg); }
 .pill.red { background: var(--red-bg); color: var(--red-fg); }
 .pill.amber { background: var(--amber-bg); color: var(--amber-fg); }
+.pill.blue { background: #e8f0fe; color: #1a56c4; }
+.pill.mute { background: var(--gray-bg); color: var(--gray-fg); }
+
+.nowrap { white-space: nowrap; }
+
+.controls .search {
+  background: var(--panel); color: var(--text); border: 1px solid var(--border-strong);
+  border-radius: 8px; padding: 7px 12px; font-size: 12px; min-width: 240px; font-family: inherit;
+}
+.controls .search::placeholder { color: var(--faint); }
+
+.thumb {
+  width: 52px; height: 40px; object-fit: cover; border-radius: 6px;
+  border: 1px solid var(--border); display: block; background: var(--panel-2);
+}
+.thumb.placeholder { background: var(--gray-bg); }
+.propaddr { font-weight: 550; max-width: 260px; }
 
 .mono { font-variant-numeric: tabular-nums; }
 .small { font-size: 11px; color: var(--muted); }

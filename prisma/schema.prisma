@@ -80,6 +80,13 @@ model Enquiry {
 
   messageBody String? // free text the applicant actually wrote
 
+  // Personalization signals from the portal (Zoopla/Rightmove structured fields).
+  budgetMax      Int? // stated ceiling, e.g. "Up to £2,500,000" -> 2500000
+  budgetRaw      String? // raw text, incl. "per month" for lettings
+  requirements   String? // "Type of property", e.g. "3+ bedroom property"
+  interestedIn   String? // features, e.g. "Has a garden"
+  aboutApplicant String? // e.g. "I have a property to sell" (valuation signal)
+
   rawSubject  String
   rawHeaders  Json
   rawBodyHtml String  @default("")

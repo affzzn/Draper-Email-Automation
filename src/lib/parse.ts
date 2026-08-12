@@ -10,6 +10,11 @@ export interface ParsedEnquiry {
   propertyAddress: string | null;
   propertyUrl: string | null;
   messageBody: string | null;
+  budgetMax: number | null;
+  budgetRaw: string | null;
+  requirements: string | null;
+  interestedIn: string | null;
+  aboutApplicant: string | null;
   replyTo: string | null;
   emailResolvedFrom: EmailResolvedFrom;
   parseStatus: ParseStatus;
@@ -62,10 +67,15 @@ function detectSource(fromAddr: string, subject: string, text: string): Source {
 }
 
 // Grab "Label: value" style fields (Rightmove/Zoopla templates and our simulator).
+// The label must start a segment (line start, or after a ";") so e.g. the label
+// "Property" does not match inside "Type of property". Handles both Zoopla's
+// row-per-field layout (newlines) and Rightmove's single semicolon-delimited line.
 function grabLabelled(text: string, labels: string[]): string | null {
   for (const label of labels) {
-    // "Label: value" up to end-of-line or a semicolon
-    const re = new RegExp(`${label}\\s*[:\\-]\\s*(.+?)\\s*(?:;|\\n|$)`, "i");
+    const re = new RegExp(
+      `(?:^|[\\n;])\\s*${label}\\s*[:\\-]\\s*(.+?)\\s*(?:;|\\n|$)`,
+      "i"
+    );
     const m = text.match(re);
     if (m && m[1] && m[1].trim() && !/^n\/?a$/i.test(m[1].trim())) {
       return m[1].trim();
@@ -134,7 +144,7 @@ export function parseMessage(msg: GraphMessage): ParsedEnquiry {
   }
 
   const applicantName =
-    grabLabelled(text, ["Name", "Applicant name", "From", "Contact name", "Full name"]) ??
+    grabLabelled(text, ["Name", "Applicant name", "Contact name", "Full name"]) ??
     msg.from?.emailAddress?.name ??
     null;
 
@@ -157,11 +167,9 @@ export function parseMessage(msg: GraphMessage): ParsedEnquiry {
 
   const propertyAddress = grabLabelled(text, [
     "PropAddress",
+    "Property Title",
     "Property address",
-    "Property",
     "Address",
-    "Regarding",
-    "Re",
   ]);
 
   const propertyUrl =
@@ -170,8 +178,25 @@ export function parseMessage(msg: GraphMessage): ParsedEnquiry {
 
   // Free text the applicant actually wrote (best-effort; LLM refines in pipeline).
   const messageBody =
-    grabLabelled(text, ["Message", "Comments", "Enquiry", "Note", "Additional information"]) ??
-    null;
+    grabLabelled(text, [
+      "Message",
+      "Additional Comments",
+      "Comments",
+      "Enquiry",
+      "Note",
+      "Additional information",
+    ]) ?? null;
+
+  // Personalization signals from the portal's structured fields.
+  const budgetRaw = grabLabelled(text, ["Price range", "Budget", "Max price"]);
+  let budgetMax: number | null = null;
+  if (budgetRaw) {
+    const m = budgetRaw.replace(/,/g, "").match(/£?\s*(\d{3,})/);
+    if (m) budgetMax = parseInt(m[1], 10);
+  }
+  const requirements = grabLabelled(text, ["Type of property", "Property type wanted"]);
+  const interestedIn = grabLabelled(text, ["Interested in", "Must have"]);
+  const aboutApplicant = grabLabelled(text, ["About"]);
 
   // ── Parse status ───────────────────────────────────────────────────────────
   let parseStatus: ParseStatus = "full";
@@ -199,6 +224,11 @@ export function parseMessage(msg: GraphMessage): ParsedEnquiry {
     propertyAddress,
     propertyUrl,
     messageBody,
+    budgetMax,
+    budgetRaw,
+    requirements,
+    interestedIn,
+    aboutApplicant,
     replyTo: replyToAddr,
     emailResolvedFrom,
     parseStatus,

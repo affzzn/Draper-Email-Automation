@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import TopNav from "./components/TopNav";
 
 export const metadata: Metadata = {
-  title: "Draper London Enquiries",
+  title: "Draper London",
   description: "Shadow mode enquiry review. Nothing is sent.",
 };
 
@@ -13,7 +14,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        <TopNav />
+        {children}
+      </body>
     </html>
   );
 }

@@ -20,6 +20,7 @@
     "subscriptions:renew": "tsx scripts/renew-subscriptions.ts",
     "backstop:delta": "tsx scripts/delta-backstop.ts",
     "report": "tsx scripts/report.ts",
+    "snapshot": "tsx scripts/snapshot.ts",
     "verify:graph": "tsx scripts/verify-graph.ts",
     "pull": "tsx scripts/pull-inbox.ts",
     "properties:sync": "tsx scripts/sync-properties.ts",

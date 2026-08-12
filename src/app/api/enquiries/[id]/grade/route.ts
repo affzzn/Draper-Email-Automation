@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { isReadOnly } from "@/lib/store";
 import { z } from "zod";
 
 const Body = z.object({
@@ -12,6 +13,9 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+  // Read-only deploy (snapshot mode): accept but do not persist.
+  if (isReadOnly()) return NextResponse.json({ ok: true, readOnly: true });
+
   const json = await req.json().catch(() => null);
   const parsed = Body.safeParse(json);
   if (!parsed.success) {

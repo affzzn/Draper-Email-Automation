@@ -5,7 +5,6 @@ import { parseMessage, htmlToText } from "./parse";
 import { classify } from "./classify";
 import { decide } from "./decide";
 import { generateReply } from "./generate";
-import { getEnricher } from "./enrich";
 import { defaultTransport } from "./transport";
 import { defaultAssignmentSink } from "./assignment";
 import { mailboxByRole } from "./mailboxes";
@@ -63,6 +62,11 @@ export async function processMessage(
       propertyAddress: parsed.propertyAddress,
       propertyUrl: parsed.propertyUrl,
       messageBody: parsed.messageBody,
+      budgetMax: parsed.budgetMax,
+      budgetRaw: parsed.budgetRaw,
+      requirements: parsed.requirements,
+      interestedIn: parsed.interestedIn,
+      aboutApplicant: parsed.aboutApplicant,
       rawSubject: msg.subject ?? "",
       rawHeaders: headersJson,
       rawBodyHtml: html,
@@ -99,8 +103,7 @@ export async function processMessage(
     mailbox !== "hello";
 
   if (shouldGenerate) {
-    const enrichment = await getEnricher().enrich(parsed);
-    const reply = await generateReply({ parsed, enrichment, mailbox });
+    const reply = await generateReply({ parsed, mailbox });
     generatedBody = reply.body;
     generationMetadata = reply.metadata;
   }

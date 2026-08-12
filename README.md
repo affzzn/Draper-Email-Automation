@@ -91,6 +91,31 @@ npm run report
 Health check: `GET /api/health` reports mode, `sends:false`, enquiry count, and
 subscription expiry.
 
+## Property database (similar-property suggestions + enrichment)
+
+Draper's own site exposes a clean public JSON feed
+(`https://draperlondon.com/wp-json/wp/v2/property`, ~140 listings). No scraping needed.
+
+- `src/lib/draperApi.ts` — reads the feed (~2 requests, read-only).
+- `src/lib/propertySync.ts` — normalises + upserts into the `Property` table, marks
+  listings that left the feed inactive. Idempotent.
+- `src/lib/match.ts` — "similar properties": same channel, price ±20%, beds ±1, near
+  outcode, only currently available (never a sold one).
+- `src/lib/enrich.ts` — `PropertyDbEnrichmentProvider` links an enquiry to its listing
+  (by site reference, or postcode) and enriches the generated draft with real
+  price/beds/features. **Off by default** (`ENRICHMENT=null`); set
+  `ENRICHMENT=property_db` to enable. Still nothing sends.
+
+```bash
+npm run properties:sync                        # pull the feed into the DB
+npm run properties:match                        # demo the similar-property matcher
+npm run properties:match -- 83517_DRL260040     # match to a specific reference
+```
+
+Scheduled daily in production via `.github/workflows/property-sync.yml` (needs
+`DATABASE_URL` + `DIRECT_URL` repo secrets pointing at the cloud DB). Suggestions in
+actual emails are phase 2; the database and matcher are independent and safe to run now.
+
 ## Configuration without a deploy (spec §13)
 
 Copy rules live in [`config/generation.json`](config/generation.json) — the system

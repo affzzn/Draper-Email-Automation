@@ -6,10 +6,12 @@ export default function GradeControls({
   enquiryId,
   initialCorrect,
   initialNote,
+  readOnly = false,
 }: {
   enquiryId: string;
   initialCorrect: boolean | null;
   initialNote: string | null;
+  readOnly?: boolean;
 }) {
   const [correct, setCorrect] = useState<boolean | null>(initialCorrect);
   const [note, setNote] = useState(initialNote ?? "");
@@ -20,6 +22,7 @@ export default function GradeControls({
     classificationCorrect?: boolean | null;
     note?: string;
   }) {
+    if (readOnly) return; // read-only demo: grading is disabled
     setBusy(true);
     setSaved(false);
     try {
@@ -46,7 +49,7 @@ export default function GradeControls({
       <div className="row">
         <button
           className={correct === true ? "on-correct" : ""}
-          disabled={busy}
+          disabled={busy || readOnly}
           onClick={() => {
             const v = correct === true ? null : true;
             setCorrect(v);
@@ -57,7 +60,7 @@ export default function GradeControls({
         </button>
         <button
           className={correct === false ? "on-wrong" : ""}
-          disabled={busy}
+          disabled={busy || readOnly}
           onClick={() => {
             const v = correct === false ? null : false;
             setCorrect(v);
@@ -68,8 +71,9 @@ export default function GradeControls({
         </button>
       </div>
       <textarea
-        placeholder="Note…"
+        placeholder={readOnly ? "read-only" : "Note…"}
         value={note}
+        disabled={readOnly}
         onChange={(e) => setNote(e.target.value)}
         onBlur={() => save({ note })}
       />
