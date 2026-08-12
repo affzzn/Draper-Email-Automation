@@ -1,22 +1,26 @@
 :root {
   color-scheme: light;
-  --bg: #ffffff;
+  /* Draper London brand palette: warm cream, brick red, deep plum */
+  --bg: #f4f0e8;
   --panel: #ffffff;
-  --panel-2: #f7f8fa;
-  --border: #e6e8eb;
-  --border-strong: #d7dae0;
-  --text: #1a1d21;
-  --muted: #6b7280;
-  --faint: #9aa1ab;
-  --accent: #2563eb;
-  --green-bg: #edf7ee;
-  --green-fg: #1f7a34;
-  --red-bg: #fdeeee;
-  --red-fg: #c02a2a;
-  --amber-bg: #fdf5e6;
+  --panel-2: #faf7f0;
+  --border: #e8e1d3;
+  --border-strong: #d8cfbd;
+  --text: #241c18;
+  --muted: #7a6f62;
+  --faint: #a89d8c;
+  --brand: #c2402e;      /* logo / primary accent */
+  --brand-dark: #a5341f;
+  --plum: #3e0c1b;       /* deep hero tone */
+  --accent: #c2402e;
+  --green-bg: #eaf3e9;
+  --green-fg: #2f7a3f;
+  --red-bg: #fbe9e6;
+  --red-fg: #b23a28;
+  --amber-bg: #f7eddb;
   --amber-fg: #9a6a12;
-  --gray-bg: #f0f1f3;
-  --gray-fg: #5a616b;
+  --gray-bg: #efeadf;
+  --gray-fg: #6f6558;
 }
 
 * { box-sizing: border-box; }
@@ -39,31 +43,39 @@ html, body {
   padding: 14px 32px; border-bottom: 1px solid var(--border);
   background: var(--panel); position: sticky; top: 0; z-index: 20;
 }
-.topnav .brand { display: flex; align-items: center; gap: 12px; }
-.topnav .brandname { font-size: 15px; font-weight: 680; letter-spacing: -0.01em; }
-.topnav .tabs { display: flex; gap: 4px; }
-.topnav .tab {
-  text-decoration: none; color: var(--muted); font-size: 13px; font-weight: 550;
-  padding: 7px 14px; border-radius: 8px;
-}
-.topnav .tab:hover { background: var(--panel-2); color: var(--text); }
-.topnav .tab.active { background: var(--text); color: #fff; }
+.topnav .brand { display: flex; align-items: center; gap: 14px; }
 
-.pagetitle { font-size: 20px; font-weight: 680; letter-spacing: -0.02em; margin: 8px 0 18px; }
+/* Draper logo lockup */
+.logo { display: flex; align-items: center; gap: 11px; }
+.logo svg { width: 34px; height: 37px; color: var(--brand); flex: none; }
+.logo .word { display: flex; flex-direction: column; line-height: 1; }
+.logo .word .d { font-size: 17px; font-weight: 800; letter-spacing: 0.02em; color: var(--plum); }
+.logo .word .l { font-size: 9px; font-weight: 600; letter-spacing: 0.34em; color: var(--brand); margin-top: 3px; }
+
+.topnav .tabs { display: flex; gap: 24px; align-items: center; }
+.topnav .tab {
+  text-decoration: none; color: var(--muted); font-size: 14px; font-weight: 550;
+  padding: 6px 0; border-bottom: 2px solid transparent;
+}
+.topnav .tab:hover { color: var(--text); }
+.topnav .tab.active { color: var(--text); border-bottom-color: var(--brand); }
+
+.pagetitle { font-size: 26px; font-weight: 800; letter-spacing: -0.02em; margin: 10px 0 20px; color: var(--plum); }
 
 .badge {
-  font-size: 10px; font-weight: 600; letter-spacing: 0.06em;
-  color: var(--muted); background: var(--gray-bg);
-  padding: 3px 8px; border-radius: 999px;
+  font-size: 10px; font-weight: 700; letter-spacing: 0.06em;
+  color: var(--brand-dark); background: var(--red-bg);
+  padding: 3px 9px; border-radius: 999px;
 }
 
 .stats { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
 .stat {
   background: var(--panel); border: 1px solid var(--border);
-  border-radius: 10px; padding: 12px 16px; min-width: 96px;
+  border-radius: 14px; padding: 14px 18px; min-width: 104px;
+  box-shadow: 0 1px 2px rgba(62, 12, 27, 0.04);
 }
-.stat .n { font-size: 22px; font-weight: 680; letter-spacing: -0.02em; }
-.stat .l { color: var(--faint); font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; margin-top: 2px; }
+.stat .n { font-size: 24px; font-weight: 800; letter-spacing: -0.02em; color: var(--plum); }
+.stat .l { color: var(--faint); font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; margin-top: 3px; }
 
 .controls { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 18px; }
 .controls select {
@@ -74,15 +86,15 @@ html, body {
 .controls select:hover { border-color: var(--faint); }
 .controls .spacer { flex: 1; }
 .btn {
-  background: var(--text); color: #fff; border: 1px solid var(--text);
-  border-radius: 8px; padding: 7px 14px; font-weight: 550; cursor: pointer;
+  background: var(--plum); color: #fff; border: 1px solid var(--plum);
+  border-radius: 9px; padding: 8px 15px; font-weight: 600; cursor: pointer;
   text-decoration: none; font-size: 12px; display: inline-flex; align-items: center;
 }
-.btn:hover { opacity: 0.9; }
+.btn:hover { opacity: 0.92; }
 .btn.secondary { background: var(--panel); color: var(--text); border-color: var(--border-strong); }
 .btn.secondary:hover { background: var(--panel-2); }
 
-.tablewrap { border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+.tablewrap { border: 1px solid var(--border); border-radius: 14px; overflow: hidden; background: var(--panel); box-shadow: 0 1px 2px rgba(62, 12, 27, 0.04); }
 .tablescroll { overflow-x: auto; }
 table { border-collapse: collapse; width: 100%; min-width: 1100px; }
 th, td { text-align: left; padding: 11px 14px; border-bottom: 1px solid var(--border); vertical-align: top; }
