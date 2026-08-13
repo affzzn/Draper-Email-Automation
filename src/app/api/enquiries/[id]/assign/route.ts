@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { isReadOnly } from "@/lib/store";
+import { isReadOnly } from "@/lib/mode";
 import { ASSIGNEES } from "@/lib/assignees";
 import { z } from "zod";
 

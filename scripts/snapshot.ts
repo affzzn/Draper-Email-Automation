@@ -96,10 +96,32 @@ async function main() {
     })),
   };
 
+  // Real portal emails carry invalid UTF-8 / control bytes and lone surrogates, which
+  // corrupt the JSON and break Next's build-time import. Strip them from every string.
+  const clean = (value: unknown) =>
+    typeof value === "string"
+      ? Array.from(value)
+          .filter((ch: string) => {
+            const c = ch.codePointAt(0) ?? 0;
+            if (c < 0x20 && c !== 0x09 && c !== 0x0a && c !== 0x0d) return false;
+            if (c === 0x7f || c === 0xfffd) return false;
+            if (c >= 0xd800 && c <= 0xdfff) return false;
+            return true;
+          })
+          .join("")
+      : value;
+
+  const json = JSON.stringify(snapshot, (_k: string, v: unknown) => clean(v));
+  JSON.parse(json); // fail loudly here if anything is still not valid JSON
+
+  // Store base64-wrapped. The bundler inlines imported JSON as a JS string literal and
+  // mangles some Unicode from real emails; base64 is pure ASCII, so it survives intact.
+  const wrapped = JSON.stringify({ b64: Buffer.from(json, "utf8").toString("base64") });
+
   const dir = resolve(process.cwd(), "data");
   mkdirSync(dir, { recursive: true });
   const path = resolve(dir, "snapshot.json");
-  writeFileSync(path, JSON.stringify(snapshot));
+  writeFileSync(path, wrapped, "utf8");
   console.log(`✓ snapshot written: ${path}`);
   console.log(`  enquiries: ${snapshot.counts.enquiries} · properties: ${snapshot.counts.properties}`);
   await prisma.$disconnect();

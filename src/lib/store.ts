@@ -4,6 +4,9 @@
 // Mode: DATA_SOURCE = "db" | "snapshot". Default: "db" if DATABASE_URL is set,
 // otherwise "snapshot". On Vercel, set DATA_SOURCE=snapshot.
 import snapshotJson from "../../data/snapshot.json";
+import { dataMode, isReadOnly } from "./mode";
+
+export { isReadOnly };
 
 export interface DecisionRow {
   eligible: boolean;
@@ -91,24 +94,17 @@ interface Snapshot {
   properties: PropertyRow[];
 }
 
-const snapshot = snapshotJson as unknown as Snapshot;
-
-function mode(): "db" | "snapshot" {
-  const explicit = (process.env.DATA_SOURCE || "").toLowerCase();
-  if (explicit === "snapshot" || explicit === "db") return explicit;
-  return process.env.DATABASE_URL ? "db" : "snapshot";
-}
-
-export function isReadOnly(): boolean {
-  return mode() === "snapshot";
-}
+// The file is base64-wrapped ({ b64: "..." }) to survive bundler JSON inlining.
+const snapshot = JSON.parse(
+  Buffer.from((snapshotJson as { b64: string }).b64, "base64").toString("utf8")
+) as Snapshot;
 
 export function snapshotGeneratedAt(): string | null {
-  return mode() === "snapshot" ? snapshot.generatedAt : null;
+  return dataMode() === "snapshot" ? snapshot.generatedAt : null;
 }
 
 export async function getEnquiryRows(): Promise<EnquiryRow[]> {
-  if (mode() === "snapshot") return snapshot.enquiries;
+  if (dataMode() === "snapshot") return snapshot.enquiries;
 
   const { prisma } = await import("./prisma");
   const rows = await prisma.enquiry.findMany({
@@ -163,7 +159,7 @@ export async function getEnquiryRows(): Promise<EnquiryRow[]> {
 }
 
 export async function getPropertyRows(): Promise<PropertyRow[]> {
-  if (mode() === "snapshot") return snapshot.properties;
+  if (dataMode() === "snapshot") return snapshot.properties;
 
   const { prisma } = await import("./prisma");
   const rows = await prisma.property.findMany({ orderBy: { priceActual: "desc" } });
