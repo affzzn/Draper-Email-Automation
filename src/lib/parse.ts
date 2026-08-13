@@ -165,12 +165,23 @@ export function parseMessage(msg: GraphMessage): ParsedEnquiry {
     "Property ref",
   ]);
 
-  const propertyAddress = grabLabelled(text, [
+  let propertyAddress = grabLabelled(text, [
     "PropAddress",
     "Property Title",
     "Property address",
     "Address",
   ]);
+  // Rightmove subject format, e.g. "Sales enquiry: Oberman Road - Tenant from SW8".
+  // A fixed template, so recover the property from the subject when the body has none.
+  if (!propertyAddress) {
+    const sm = subject.match(
+      /(?:sales|lettings)\s+enquiry:\s*(.+?)\s*-\s*(?:buyer|tenant)\s+from\b/i
+    );
+    if (sm && sm[1] && sm[1].trim()) {
+      propertyAddress = sm[1].trim();
+      notes.push("property: recovered from subject line");
+    }
+  }
 
   const propertyUrl =
     grabLabelled(text, ["PropUrl", "Property URL", "Listing", "Link"]) ??

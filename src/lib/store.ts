@@ -41,8 +41,10 @@ export interface EnquiryRow {
   parseNotes: string[];
   intent: string | null;
   confidence: number | null;
+  factualQuestion: string | null;
   gradedClassificationCorrect: boolean | null;
   gradingNote: string | null;
+  assignedTo: string | null;
   rawSubject: string;
   rawBodyText: string;
   rawBodyHtml: string;
@@ -137,8 +139,10 @@ export async function getEnquiryRows(): Promise<EnquiryRow[]> {
     parseNotes: e.parseNotes,
     intent: e.intent,
     confidence: e.confidence,
+    factualQuestion: e.factualQuestion,
     gradedClassificationCorrect: e.gradedClassificationCorrect,
     gradingNote: e.gradingNote,
+    assignedTo: e.assignedTo,
     rawSubject: e.rawSubject,
     rawBodyText: e.rawBodyText,
     rawBodyHtml: e.rawBodyHtml,

@@ -110,6 +110,83 @@ export async function alternativesForEnquiry(opts: {
   });
 }
 
+// v3 comparable: the strict "Anshika case" test. A genuinely close alternative in the
+// same or adjacent postcode district, within 25% of the enquired price (or the stated
+// budget), matching beds. Returns the single best, or null (never a weak fallback).
+function agencyRefToken(ref: string | null | undefined): string | null {
+  if (!ref) return null;
+  const m = ref.match(/[A-Z]{2,4}\d{5,}/i);
+  return m ? m[0].toUpperCase() : ref.toUpperCase();
+}
+function postcodeKey(addr: string | null | undefined): string | null {
+  if (!addr) return null;
+  const m = addr.toUpperCase().match(/([A-Z]{1,2}\d[A-Z\d]?)\s*(\d[A-Z]{2})/);
+  return m ? `${m[1]}${m[2]}` : null;
+}
+
+export async function comparableForEnquiry(opts: {
+  channel: Channel;
+  seedPrice: number; // enquired property price, or stated budget
+  seedBeds: number | null; // enquired property beds, or stated requirement
+  requiredBeds: number | null; // applicant's explicitly stated bedroom requirement
+  seedOutcode: string;
+  budgetMax: number | null;
+  excludePropertyId?: string | null;
+  excludeRef?: string | null;
+  excludeAddress?: string | null;
+}): Promise<ScoredProperty | null> {
+  const area = opts.seedOutcode.replace(/\d.*$/, ""); // "NW6" -> "NW"
+  const priceLo = Math.round(opts.seedPrice * 0.75);
+  let priceHi = Math.round(opts.seedPrice * 1.25);
+  if (opts.budgetMax) priceHi = Math.min(priceHi, opts.budgetMax);
+
+  const cands = await prisma.property.findMany({
+    where: {
+      active: true,
+      channel: opts.channel,
+      status: { in: [...AVAILABLE] },
+      priceActual: { gte: priceLo, lte: priceHi },
+      outcode: { startsWith: area },
+      ...(opts.excludePropertyId ? { id: { not: opts.excludePropertyId } } : {}),
+    },
+    take: 100,
+  });
+
+  const excRef = agencyRefToken(opts.excludeRef);
+  const excPc = postcodeKey(opts.excludeAddress);
+
+  const scored: ScoredProperty[] = [];
+  for (const p of cands) {
+    if (excRef && p.reference && agencyRefToken(p.reference) === excRef) continue;
+    if (excPc && p.postcode && p.postcode.toUpperCase().replace(/\s+/g, "") === excPc) continue;
+    // Beds: exact match to a stated requirement, else within one of the enquired.
+    if (opts.requiredBeds != null) {
+      if (p.bedrooms !== opts.requiredBeds) continue;
+    } else if (opts.seedBeds != null && p.bedrooms != null) {
+      if (Math.abs(p.bedrooms - opts.seedBeds) > 1) continue;
+    }
+    let score = 0;
+    const reasons: string[] = [];
+    const pd = Math.abs(p.priceActual! - opts.seedPrice) / opts.seedPrice;
+    score += Math.max(0, 1 - pd / 0.25) * 3;
+    reasons.push(`price ${Math.round(pd * 100)}% away`);
+    if (p.outcode === opts.seedOutcode) {
+      score += 2;
+      reasons.push(`same area (${p.outcode})`);
+    } else {
+      score += 0.5;
+      reasons.push(`adjacent (${p.outcode})`);
+    }
+    if (opts.seedBeds != null && p.bedrooms != null) {
+      score += p.bedrooms === opts.seedBeds ? 1 : 0.5;
+    }
+    scored.push({ property: p, score, reasons });
+  }
+
+  scored.sort((a, b) => b.score - a.score);
+  return scored[0] ?? null;
+}
+
 // Convenience: given one of our own properties (by reference), find its neighbours.
 export async function findSimilarToReference(
   reference: string,

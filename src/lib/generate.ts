@@ -1,39 +1,56 @@
 import { complete, anthropicModel, anthropic } from "./anthropic";
 import type { ParsedEnquiry } from "./parse";
 import type { Channel, Mailbox, Property } from "@prisma/client";
+import type { Classification } from "./classify";
 import { resolvePropertyForEnquiry, typeWord, shortStreet } from "./propertyLink";
-import { alternativesForEnquiry, type ScoredProperty } from "./match";
+import { comparableForEnquiry, type ScoredProperty } from "./match";
 import generationConfig from "../../config/generation.json";
 
 export interface GeneratedReply {
   body: string;
   metadata: {
     model: string;
+    shape: string;
+    signOff: string;
     systemPrompt: string;
     userPrompt: string;
-    phrasingIndex: number;
     generatedByLLM: boolean;
     resolvedPropertyId: string | null;
     availability: string;
     alternatives: { id: string; url: string }[];
+    factualQuestion: string | null;
   };
 }
 
 const signatures: Record<string, string> = generationConfig.signatures;
-
-function pickPhrasingIndex(seed: string): number {
-  let h = 0;
-  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
-  return h % generationConfig.approvedPhrasings.length;
-}
+const signOffs: string[] = generationConfig.signOffs;
+const HARD = generationConfig.wordLimitHard ?? 90;
+const SUPPRESS = generationConfig.alternativesPolicy.suppressAboveValue;
 
 function signatureFor(mailbox: Mailbox): string {
   const raw = signatures[mailbox] ?? signatures.sales;
   return raw.replace(/\n/g, "<br>");
 }
 
+function hashPick<T>(arr: T[], seed: string): T {
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
+  return arr[h % arr.length];
+}
+
 function stripCodeFences(s: string): string {
   return s.replace(/^\s*```(?:html)?\s*/i, "").replace(/\s*```\s*$/i, "").trim();
+}
+
+// The model must never emit links or link-words. Defensive scrub before we insert
+// our own anchor for {{ALT_1}}.
+function stripModelLinks(s: string): string {
+  return s
+    .replace(/<a\b[^>]*>(.*?)<\/a>/gis, "$1") // unwrap any anchor, keep text
+    .replace(/https?:\/\/\S+/gi, "")
+    .replace(/\[?\(?\s*link(?:\s*here)?\s*:?\s*\)?\]?/gi, "")
+    .replace(/\bdetails here\s*:?/gi, "")
+    .replace(/ {2,}/g, " ");
 }
 
 export function removeLongDashes(s: string): string {
@@ -45,9 +62,13 @@ export function removeLongDashes(s: string): string {
     .replace(/,\s*,/g, ",");
 }
 
-function withinWordLimit(html: string): boolean {
-  const words = html.replace(/<[^>]+>/g, " ").replace(/\{\{SIGNATURE\}\}/g, "").trim().split(/\s+/).filter(Boolean);
-  return words.length <= generationConfig.wordLimit + 20;
+function wordCount(html: string): number {
+  return html
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\{\{SIGNATURE\}\}|\{\{ALT_1\}\}/g, "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean).length;
 }
 
 function outcodeOf(address: string | null): string | null {
@@ -62,30 +83,22 @@ function bedroomsHintFrom(requirements: string | null): number | null {
   return m ? parseInt(m[1], 10) : null;
 }
 
-// Short, natural way to refer to the property. Never the full address or postcode.
-function propertyShortForm(property: Property | null, parsed: ParsedEnquiry): string {
-  const tw = typeWord(property?.propertyType) ?? null;
-  const street = property?.addressStreet ?? shortStreet(parsed.propertyAddress);
+// Short, natural property reference computed IN CODE from our clean DB record only.
+// If we have no DB match, return "" so the model falls back to "the property".
+function propertyShortForm(property: Property | null): string {
+  if (!property) return "";
+  const tw = typeWord(property.propertyType);
+  const street = property.addressStreet;
   if (tw && street) return `the ${tw} on ${street}`;
   if (tw) return `the ${tw}`;
   if (street) return `the property on ${street}`;
-  return "the property";
+  return "";
 }
 
-function availabilityLabel(property: Property | null): string {
-  if (!property) return "available (status unknown, assume available)";
-  switch (property.status) {
-    case "sold":
-      return "NO LONGER AVAILABLE (now sold)";
-    case "let":
-      return "NO LONGER AVAILABLE (now let)";
-    case "withdrawn":
-      return "NO LONGER AVAILABLE (withdrawn)";
-    case "under_offer":
-      return "available (currently under offer, viewings may still be possible)";
-    default:
-      return "available";
-  }
+function availabilityLabel(property: Property | null): "available" | "unknown" | "unavailable" {
+  if (!property) return "unknown";
+  if (["sold", "let", "withdrawn"].includes(property.status)) return "unavailable";
+  return "available"; // for_sale / to_let / under_offer
 }
 
 function channelFor(property: Property | null, mailbox: Mailbox): Channel {
@@ -93,87 +106,160 @@ function channelFor(property: Property | null, mailbox: Mailbox): Channel {
   return mailbox === "lettings" ? "lettings" : "sales";
 }
 
-function altLine(a: ScoredProperty): string {
+// Shape selection happens in code (not the model). First match wins: D, B, C, A.
+function selectShape(
+  availability: string,
+  factualQuestion: string | null,
+  message: string | null
+): "A" | "B" | "C" | "D" {
+  if (availability === "unavailable") return "D";
+  const msg = message ?? "";
+  const hasFactual =
+    !!factualQuestion ||
+    /\b(lease|service charge|epc|available|availability|pets?|parking|chain|tenure|square (feet|footage)|sq ?ft|council tax|furnished|unfurnished|garden|deposit)\b\??/i.test(
+      msg
+    ) && /\?/.test(msg);
+  if (hasFactual) return "B";
+  const hasContext =
+    /\brelocat|moving (from|over|to)|move[- ]?in|move date|first[- ]?time buyer|buying with|my (partner|husband|wife|family)|current lease|lease ends|corporate let|embassy|student|starting (work|a job)/i.test(
+      msg
+    );
+  if (hasContext) return "C";
+  return "A";
+}
+
+function askedWhatElse(message: string | null): boolean {
+  return /what else|anything else|else do you have|other propert|similar propert|alternatives?/i.test(
+    message ?? ""
+  );
+}
+
+function suppressAltByValue(channel: Channel, property: Property | null): boolean {
+  if (!property?.priceActual) return false;
+  if (channel === "sales") return property.priceActual > SUPPRESS.salesAskingPrice;
+  if (channel === "lettings") return property.priceActual > SUPPRESS.lettingsPcm;
+  return false;
+}
+
+function altDescription(a: ScoredProperty): string {
   const p = a.property;
   const tw = typeWord(p.propertyType) ?? "property";
-  const where = shortStreet(p.addressStreet) ?? p.addressArea ?? "";
+  const beds = p.bedrooms ? `${p.bedrooms} bedroom ` : "";
+  const where = shortStreet(p.addressStreet) ?? p.addressArea ?? "the area";
+  return `a similar ${beds}${tw} on ${where}`;
+}
+
+function altAnchor(a: ScoredProperty): string {
+  const p = a.property;
+  const where = shortStreet(p.addressStreet) ?? p.addressArea ?? "View property";
   const price = p.priceFormatted ?? (p.priceActual ? `£${p.priceActual.toLocaleString()}` : "");
-  const beds = p.bedrooms ? `${p.bedrooms} bed ` : "";
-  return `- ${beds}${tw} on ${where}, ${price}: ${p.url}`;
+  const label = price ? `${where}, ${price}` : where;
+  return `<a href="${p.url}">${label}</a>`;
 }
 
 function fallbackBody(
   firstName: string | null,
   propertyShort: string,
-  available: boolean,
-  alts: ScoredProperty[]
+  availability: string,
+  signOff: string,
+  alt: ScoredProperty | null
 ): string {
-  const greeting = firstName ? `Dear ${firstName},` : "Hello,";
-  const parts = [`<p>${greeting}</p>`, `<p>Thank you for your enquiry.</p>`];
-  if (available) {
-    parts.push(`<p>We would be glad to arrange a viewing of ${propertyShort}. Please let us know when might be convenient for you.</p>`);
+  const who = propertyShort || "the property";
+  const greet = firstName ? `Dear ${firstName},` : "Dear Sir or Madam,";
+  const parts = [`<p>${greet}</p>`];
+  if (availability === "unavailable") {
+    parts.push(`<p>Thank you for your enquiry. I am sorry to say ${who} has now been sold or let.</p>`);
+    if (alt) {
+      parts.push(`<p>We do have something else which may be of interest.</p>`, `<p>{{ALT_1}}</p>`);
+    } else {
+      parts.push(`<p>If you let me know what you are looking for, I would be happy to suggest some options.</p>`);
+    }
   } else {
-    parts.push(`<p>I am sorry to say ${propertyShort} is no longer available. If you let me know what you are looking for, I would be happy to suggest some options.</p>`);
+    parts.push(`<p>Thank you for your enquiry.</p>`);
+    parts.push(`<p>We would be glad to arrange a viewing of ${who}. When would suit you?</p>`);
   }
-  if (alts[0]) {
-    const p = alts[0].property;
-    const tw = typeWord(p.propertyType) ?? "property";
-    const where = shortStreet(p.addressStreet) ?? p.addressArea ?? "the area";
-    parts.push(`<p>We also have a ${tw} on ${where} which may suit: ${p.url}</p>`);
-  }
-  parts.push(`<p>It would help to know your general requirements so we can see what else we might have, both on and off market.</p>`);
-  parts.push(`<p>Many thanks,<br>{{SIGNATURE}}</p>`);
+  parts.push(`<p>${signOff},<br>{{SIGNATURE}}</p>`);
   return parts.join("\n");
 }
 
 export async function generateReply(params: {
   parsed: ParsedEnquiry;
   mailbox: Mailbox;
+  classification: Classification;
+  isRepeat?: boolean;
 }): Promise<GeneratedReply> {
-  const { parsed, mailbox } = params;
+  const { parsed, mailbox, classification } = params;
   const firstName = parsed.applicantName ? parsed.applicantName.split(/\s+/)[0] : null;
 
-  // Resolve the property from our own DB for a clean descriptor + availability.
   const property = await resolvePropertyForEnquiry(parsed);
-  const propertyShort = propertyShortForm(property, parsed);
+  const propertyShort = propertyShortForm(property);
   const availability = availabilityLabel(property);
-  const available = !availability.startsWith("NO LONGER");
   const channel = channelFor(property, mailbox);
+  const signOff = hashPick(signOffs, parsed.applicantEmail ?? propertyShort ?? "x");
+  const shape = selectShape(availability, classification.factualQuestion, parsed.messageBody);
 
-  // Pick 1-2 genuinely-relevant alternatives (quality-gated).
-  const alts = await alternativesForEnquiry({
-    channel,
-    property,
-    budgetMax: parsed.budgetMax,
-    bedroomsHint: bedroomsHintFrom(parsed.requirements),
-    outcodeHint: property?.outcode ?? outcodeOf(parsed.propertyAddress),
-    limit: 2,
-  });
+  // Alternatives (v3): decided entirely in code. Suppress on high value, on repeats,
+  // and on shape B unless they explicitly asked about others. Otherwise offer one IF a
+  // genuinely comparable property exists nearby (the "Anshika case"), never a weak match.
+  const asked = askedWhatElse(parsed.messageBody);
+  const reqBeds = bedroomsHintFrom(parsed.requirements);
+  const seedOutcode = property?.outcode ?? outcodeOf(parsed.propertyAddress);
+  const seedPrice = property?.priceActual ?? parsed.budgetMax ?? null;
+  const seedBeds = property?.bedrooms ?? reqBeds;
 
-  const phrasingIndex = pickPhrasingIndex(parsed.applicantEmail ?? propertyShort);
-  const phrasing = generationConfig.approvedPhrasings[phrasingIndex];
+  let altToUse: ScoredProperty | null = null;
+  const suppressAlt =
+    suppressAltByValue(channel, property) ||
+    params.isRepeat === true ||
+    (shape === "B" && !asked);
+
+  if (!suppressAlt && seedOutcode && seedPrice !== null) {
+    altToUse = await comparableForEnquiry({
+      channel,
+      seedPrice,
+      seedBeds,
+      requiredBeds: reqBeds,
+      seedOutcode,
+      budgetMax: parsed.budgetMax,
+      excludePropertyId: property?.id,
+      excludeRef: parsed.propertyReference,
+      excludeAddress: parsed.propertyAddress,
+    });
+  }
+
+  // Enquired-property context for the model (v3 requiredInputs).
+  const propPrice = property?.priceFormatted ?? (property?.priceActual ? `£${property.priceActual.toLocaleString()}` : "(price not known)");
+  const propBeds = property?.bedrooms != null ? String(property.bedrooms) : "";
+  const propType = typeWord(property?.propertyType) ?? "property";
 
   const systemPrompt = generationConfig.systemPrompt;
   const userPrompt = generationConfig.userPromptTemplate
-    .replace("{{firstName}}", firstName ?? "(not provided, greet without a name)")
+    .replace("{{shape}}", shape)
+    .replace("{{signOff}}", signOff)
+    .replace("{{firstName}}", firstName ?? "")
     .replace("{{channel}}", channel)
-    .replace("{{propertyShort}}", propertyShort)
+    .replace("{{propertyShort}}", propertyShort || "(none, say 'the property')")
     .replace("{{availability}}", availability)
-    .replace("{{message}}", parsed.messageBody ?? "(none)")
-    .replace("{{budget}}", parsed.budgetRaw ?? "(none)")
-    .replace("{{requirements}}", parsed.requirements ?? "(none)")
-    .replace("{{about}}", parsed.aboutApplicant ?? "(none)")
-    .replace("{{alternatives}}", alts.length ? alts.map(altLine).join("\n") : "(none)")
-    .replace("{{phrasing}}", phrasing);
+    .replace("{{message}}", parsed.messageBody ?? "")
+    .replace("{{budget}}", parsed.budgetRaw ?? "")
+    .replace("{{requirements}}", parsed.requirements ?? "")
+    .replace("{{about}}", parsed.aboutApplicant ?? "")
+    .replace("{{propertyPrice}}", propPrice)
+    .replace("{{propertyBedrooms}}", propBeds)
+    .replace("{{propertyType}}", propType)
+    .replace("{{alternativeDescription}}", altToUse ? altDescription(altToUse) : "")
+    .replace("{{isRepeat}}", params.isRepeat ? "true" : "false");
 
   let body: string | null = null;
   let generatedByLLM = false;
 
   if (anthropic()) {
     try {
-      const out = await complete({ system: systemPrompt, user: userPrompt, maxTokens: 500 });
-      const cleaned = out ? stripCodeFences(out) : null;
-      if (cleaned && cleaned.includes("{{SIGNATURE}}") && withinWordLimit(cleaned)) {
+      const out = await complete({ system: systemPrompt, user: userPrompt, maxTokens: 450 });
+      let cleaned = out ? stripModelLinks(stripCodeFences(out)) : null;
+      if (cleaned && cleaned.includes("{{SIGNATURE}}") && wordCount(cleaned) <= HARD + 12) {
+        // If the model referenced an alt but we have none, drop the stray token/line.
+        if (!altToUse) cleaned = cleaned.replace(/<p>\s*\{\{ALT_1\}\}\s*<\/p>/gi, "").replace(/\{\{ALT_1\}\}/g, "");
         body = cleaned;
         generatedByLLM = true;
       }
@@ -182,21 +268,27 @@ export async function generateReply(params: {
     }
   }
 
-  if (!body) body = fallbackBody(firstName, propertyShort, available, alts);
+  if (!body) body = fallbackBody(firstName, propertyShort, availability, signOff, altToUse);
 
-  const resolvedBody = removeLongDashes(body.replace(/\{\{SIGNATURE\}\}/g, signatureFor(mailbox)));
+  // Insert our own anchor for {{ALT_1}} (the model never writes links), then sign.
+  let resolved = body;
+  if (altToUse) resolved = resolved.replace(/\{\{ALT_1\}\}/g, altAnchor(altToUse));
+  resolved = resolved.replace(/<p>\s*<\/p>/g, "");
+  resolved = removeLongDashes(resolved.replace(/\{\{SIGNATURE\}\}/g, signatureFor(mailbox)));
 
   return {
-    body: resolvedBody,
+    body: resolved,
     metadata: {
       model: anthropicModel(),
+      shape,
+      signOff,
       systemPrompt,
       userPrompt,
-      phrasingIndex,
       generatedByLLM,
       resolvedPropertyId: property?.id ?? null,
       availability,
-      alternatives: alts.map((a) => ({ id: a.property.id, url: a.property.url })),
+      alternatives: altToUse ? [{ id: altToUse.property.id, url: altToUse.property.url }] : [],
+      factualQuestion: classification.factualQuestion,
     },
   };
 }

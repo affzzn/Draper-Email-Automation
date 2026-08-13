@@ -1,6 +1,8 @@
 import GradeControls from "./components/GradeControls";
 import RawViewer from "./components/RawViewer";
+import AssignControls from "./components/AssignControls";
 import { getEnquiryRows, isReadOnly } from "@/lib/store";
+import { defaultAssignee } from "@/lib/assignees";
 
 export const dynamic = "force-dynamic";
 
@@ -16,39 +18,58 @@ function fmt(iso: string | null | undefined): string {
   }).format(new Date(iso));
 }
 
-function nullable(v: string | null | undefined) {
-  if (v === null || v === undefined || v === "")
-    return <span className="null">null</span>;
-  return <>{v}</>;
+const TYPE_LABEL: Record<string, string> = {
+  viewing_request: "Viewing request",
+  valuation_request: "Valuation",
+  landlord_enquiry: "Landlord",
+  tenant_or_maintenance: "Tenant / maintenance",
+  supplier: "Supplier",
+  recruitment: "Recruitment",
+  press: "Press",
+  spam: "Spam",
+  other: "Other",
+};
+
+type Row = Awaited<ReturnType<typeof getEnquiryRows>>[number];
+
+// Plain-English status for a client, derived from the internal decision.
+function statusOf(e: Row): { label: string; tone: string } {
+  const d = e.decision;
+  if (d?.generatedBody) return { label: "Reply drafted", tone: "green" };
+  const sr = d?.suppressionReason;
+  if (sr === "human_replied_first") return { label: "Handled by team", tone: "mute" };
+  if (sr === "one_reply_per_thread") return { label: "Already replied", tone: "mute" };
+  if (sr === "repeat_enquiry") return { label: "Awaiting a call", tone: "amber" };
+  if (sr === "auto_responder_guard") return { label: "Automated sender", tone: "mute" };
+  if (["valuation_request", "landlord_enquiry", "tenant_or_maintenance"].includes(e.intent ?? ""))
+    return { label: "Needs a person", tone: "mute" };
+  if (["supplier", "spam", "recruitment", "press"].includes(e.intent ?? ""))
+    return { label: "No action", tone: "mute" };
+  if (e.intent === "viewing_request") return { label: "Needs review", tone: "amber" };
+  return { label: "No action", tone: "mute" };
 }
 
 type SP = Record<string, string | undefined>;
 
-export default async function Page({
-  searchParams,
-}: {
-  searchParams: Promise<SP>;
-}) {
+export default async function Page({ searchParams }: { searchParams: Promise<SP> }) {
   const sp = await searchParams;
+  const review = sp.review === "1" || sp.review === "true";
   const all = await getEnquiryRows();
 
   const filtered = all.filter((e) => {
     if (sp.mailbox && e.mailbox !== sp.mailbox) return false;
     if (sp.intent && e.intent !== sp.intent) return false;
-    if (sp.parseStatus && e.parseStatus !== sp.parseStatus) return false;
-    if (sp.eligible === "yes" && !e.decision?.eligible) return false;
-    if (sp.eligible === "no" && e.decision?.eligible) return false;
     return true;
   });
 
   const total = all.length;
   const viewingCount = all.filter((e) => e.intent === "viewing_request").length;
-  const eligibleCount = all.filter((e) => e.decision?.eligible).length;
   const draftCount = all.filter((e) => e.decision?.generatedBody).length;
 
   const enquiries = filtered.slice(0, 500);
   const exportQs = new URLSearchParams(sp as Record<string, string>).toString();
   const readOnly = isReadOnly();
+  const cols = 10 + (review ? 2 : 0);
 
   return (
     <div className="wrap">
@@ -57,38 +78,27 @@ export default async function Page({
       <div className="stats">
         <div className="stat"><div className="n">{total}</div><div className="l">Enquiries</div></div>
         <div className="stat"><div className="n">{viewingCount}</div><div className="l">Viewing requests</div></div>
-        <div className="stat"><div className="n">{eligibleCount}</div><div className="l">Eligible</div></div>
-        <div className="stat"><div className="n">{draftCount}</div><div className="l">Drafts</div></div>
+        <div className="stat"><div className="n">{draftCount}</div><div className="l">Replies drafted</div></div>
       </div>
 
       <form className="controls" method="get">
+        {review && <input type="hidden" name="review" value="1" />}
         <select name="mailbox" defaultValue={sp.mailbox ?? ""}>
-          <option value="">All mailboxes</option>
-          <option value="sales">sales</option>
-          <option value="lettings">lettings</option>
-          <option value="hello">hello</option>
+          <option value="">All inboxes</option>
+          <option value="sales">Sales</option>
+          <option value="lettings">Lettings</option>
+          <option value="hello">Hello</option>
         </select>
         <select name="intent" defaultValue={sp.intent ?? ""}>
-          <option value="">All intents</option>
-          {["viewing_request","valuation_request","landlord_enquiry","tenant_or_maintenance","supplier","recruitment","press","spam","other"].map((i) => (
-            <option key={i} value={i}>{i}</option>
+          <option value="">All types</option>
+          {Object.entries(TYPE_LABEL).map(([v, label]) => (
+            <option key={v} value={v}>{label}</option>
           ))}
         </select>
-        <select name="eligible" defaultValue={sp.eligible ?? ""}>
-          <option value="">Eligible: any</option>
-          <option value="yes">Eligible only</option>
-          <option value="no">Ineligible only</option>
-        </select>
-        <select name="parseStatus" defaultValue={sp.parseStatus ?? ""}>
-          <option value="">Parse: any</option>
-          <option value="full">full</option>
-          <option value="partial">partial</option>
-          <option value="failed">failed</option>
-        </select>
         <button className="btn" type="submit">Filter</button>
-        <a className="btn secondary" href="/">Reset</a>
+        <a className="btn secondary" href={review ? "/?review=1" : "/"}>Reset</a>
         <span className="spacer" />
-        <a className="btn secondary" href={`/api/export?${exportQs}`}>Export CSV</a>
+        <a className="btn secondary" href={`/api/export?${exportQs}`}>Export</a>
       </form>
 
       <div className="tablewrap">
@@ -97,100 +107,58 @@ export default async function Page({
             <thead>
               <tr>
                 <th>Received</th>
-                <th>Mailbox</th>
+                <th>Inbox</th>
                 <th>Applicant</th>
-                <th>Email</th>
                 <th>Property</th>
-                <th>Parse</th>
-                <th>Intent</th>
-                <th>Eligible</th>
-                <th>Suppressed</th>
+                <th>Type</th>
+                <th>Status</th>
                 <th>Send time</th>
+                <th>Assign to</th>
                 <th>Reply</th>
-                <th>Raw</th>
-                <th>Grade</th>
+                <th>Message</th>
+                {review && <th>Parse</th>}
+                {review && <th>Grade</th>}
               </tr>
             </thead>
             <tbody>
               {enquiries.map((e) => {
-                const d = e.decision;
+                const st = statusOf(e);
                 return (
                   <tr key={e.id}>
                     <td className="time">{fmt(e.receivedAt)}</td>
                     <td>
-                      <div>{e.mailbox}</div>
-                      <div className="small">{e.source}</div>
+                      <div className="cap">{e.mailbox}</div>
+                      <div className="small cap">{e.source}</div>
                     </td>
-                    <td>{nullable(e.applicantName)}</td>
                     <td>
-                      {e.applicantEmail ? (
-                        <>
-                          <div className="mono">{e.applicantEmail}</div>
-                          <div className="small">via {e.emailResolvedFrom}</div>
-                        </>
-                      ) : (
-                        <span className="null">null</span>
+                      <div className="strong">{e.applicantName ?? "—"}</div>
+                      {e.applicantEmail && <div className="small mono">{e.applicantEmail}</div>}
+                    </td>
+                    <td>{e.propertyAddress ?? e.propertyReference ?? <span className="faintdash">—</span>}</td>
+                    <td>{e.intent ? TYPE_LABEL[e.intent] ?? e.intent : "—"}
+                      {review && e.confidence != null && <div className="small mono">{e.confidence.toFixed(2)}</div>}
+                      {review && e.factualQuestion && <div className="reason">Q: {e.factualQuestion}</div>}
+                    </td>
+                    <td>
+                      <span className={`pill ${st.tone}`}>{st.label}</span>
+                      {review && (e.decision?.ineligibleReason || e.decision?.suppressionReason) && (
+                        <div className="reason">{e.decision?.suppressionReason ?? e.decision?.ineligibleReason}</div>
                       )}
                     </td>
-                    <td>{nullable(e.propertyAddress ?? e.propertyReference)}</td>
+                    <td className="time">{fmt(e.decision?.wouldSendAtHeld)}</td>
                     <td>
-                      <span
-                        className={`pill ${
-                          e.parseStatus === "full" ? "green" : e.parseStatus === "partial" ? "amber" : "red"
-                        }`}
-                      >
-                        {e.parseStatus}
-                      </span>
-                      {e.parseNotes.length > 0 && (
-                        <ul className="notes">
-                          {e.parseNotes.map((n, i) => (<li key={i}>{n}</li>))}
-                        </ul>
-                      )}
+                      <AssignControls
+                        enquiryId={e.id}
+                        current={e.assignedTo ?? defaultAssignee(e.mailbox)}
+                        isDefault={!e.assignedTo}
+                        readOnly={readOnly}
+                      />
                     </td>
                     <td>
-                      {e.intent ? (
-                        <>
-                          <span className="pill">{e.intent}</span>
-                          <div className="small mono">{e.confidence?.toFixed(2) ?? ""}</div>
-                        </>
+                      {e.decision?.generatedBody ? (
+                        <div className="reply" dangerouslySetInnerHTML={{ __html: e.decision.generatedBody }} />
                       ) : (
-                        <span className="null">null</span>
-                      )}
-                    </td>
-                    <td>
-                      {d?.eligible ? (
-                        <>
-                          <span className="pill green">yes</span>
-                          <div className="reason">
-                            {e.intent}, confidence {e.confidence?.toFixed(2)}, applicant email and property present
-                          </div>
-                        </>
-                      ) : (
-                        <>
-                          <span className="pill">no</span>
-                          <div className="reason">{d?.ineligibleReason}</div>
-                        </>
-                      )}
-                    </td>
-                    <td>
-                      {d?.suppressed ? (
-                        <>
-                          <span className="pill amber">yes</span>
-                          <div className="reason">{d?.suppressionReason}</div>
-                        </>
-                      ) : (
-                        <span className="pill">no</span>
-                      )}
-                    </td>
-                    <td className="time">
-                      <div>{fmt(d?.wouldSendAtImmediate)}</div>
-                      <div className="held">{fmt(d?.wouldSendAtHeld)}</div>
-                    </td>
-                    <td>
-                      {d?.generatedBody ? (
-                        <div className="reply" dangerouslySetInnerHTML={{ __html: d.generatedBody }} />
-                      ) : (
-                        <span className="reply none">none</span>
+                        <span className="reply none">—</span>
                       )}
                     </td>
                     <td>
@@ -201,19 +169,29 @@ export default async function Page({
                         emailResolvedFrom={e.emailResolvedFrom}
                       />
                     </td>
-                    <td>
-                      <GradeControls
-                        enquiryId={e.id}
-                        initialCorrect={e.gradedClassificationCorrect}
-                        initialNote={e.gradingNote}
-                        readOnly={readOnly}
-                      />
-                    </td>
+                    {review && (
+                      <td>
+                        <span className={`pill ${e.parseStatus === "full" ? "green" : e.parseStatus === "partial" ? "amber" : "red"}`}>{e.parseStatus}</span>
+                        {e.parseNotes.length > 0 && (
+                          <ul className="notes">{e.parseNotes.map((n, i) => (<li key={i}>{n}</li>))}</ul>
+                        )}
+                      </td>
+                    )}
+                    {review && (
+                      <td>
+                        <GradeControls
+                          enquiryId={e.id}
+                          initialCorrect={e.gradedClassificationCorrect}
+                          initialNote={e.gradingNote}
+                          readOnly={readOnly}
+                        />
+                      </td>
+                    )}
                   </tr>
                 );
               })}
               {enquiries.length === 0 && (
-                <tr><td colSpan={13} className="empty">No enquiries yet.</td></tr>
+                <tr><td colSpan={cols} className="empty">No enquiries yet.</td></tr>
               )}
             </tbody>
           </table>

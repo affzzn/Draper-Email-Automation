@@ -44,6 +44,13 @@ html, body {
   background: var(--panel); position: sticky; top: 0; z-index: 20;
 }
 .topnav .brand { display: flex; align-items: center; gap: 14px; }
+.brand-sub {
+  font-size: 12px; color: var(--muted); font-weight: 500; letter-spacing: 0.01em;
+  padding-left: 14px; border-left: 1px solid var(--border); align-self: center;
+}
+.cap { text-transform: capitalize; }
+.strong { font-weight: 600; }
+.faintdash { color: var(--faint); }
 
 /* Draper logo lockup */
 .logo { display: flex; align-items: center; gap: 11px; }
@@ -200,5 +207,13 @@ td.null, .null { color: var(--faint); }
 }
 .grade textarea::placeholder { color: var(--faint); }
 .grade .saved { color: var(--green-fg); font-size: 10px; }
+
+.assign { display: flex; flex-direction: column; gap: 4px; min-width: 96px; }
+.assign select {
+  background: var(--panel); color: var(--text); border: 1px solid var(--border-strong);
+  border-radius: 7px; padding: 6px 8px; font-size: 12px; font-family: inherit; cursor: pointer;
+}
+.assign select:disabled { opacity: 0.7; cursor: default; }
+.assign-tag { font-size: 10px; color: var(--faint); text-transform: uppercase; letter-spacing: 0.04em; }
 
 .empty { padding: 28px; text-align: center; color: var(--faint); font-size: 13px; }

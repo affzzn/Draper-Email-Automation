@@ -79,6 +79,7 @@ export async function processMessage(
       intent: classification.intent,
       confidence: classification.confidence,
       classifierRaw: classification.raw as object,
+      factualQuestion: classification.factualQuestion,
     },
   });
 
@@ -103,7 +104,12 @@ export async function processMessage(
     mailbox !== "hello";
 
   if (shouldGenerate) {
-    const reply = await generateReply({ parsed, mailbox });
+    const reply = await generateReply({
+      parsed,
+      mailbox,
+      classification,
+      isRepeat: !!decision.duplicateOf,
+    });
     generatedBody = reply.body;
     generationMetadata = reply.metadata;
   }

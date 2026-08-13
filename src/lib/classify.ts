@@ -6,6 +6,7 @@ import generationConfig from "../../config/generation.json";
 export interface Classification {
   intent: Intent;
   confidence: number;
+  factualQuestion: string | null; // the question they asked, for the follow-up call
   raw: unknown; // stored for calibration (spec §6.5)
 }
 
@@ -29,23 +30,24 @@ function heuristic(parsed: ParsedEnquiry, subject: string): Classification {
   const structuredViewing =
     (parsed.source === "rightmove" || parsed.source === "zoopla") &&
     (!!parsed.propertyAddress || !!parsed.propertyReference);
+  const base = { factualQuestion: null as string | null, raw: { heuristic: true } };
 
   if (/valuation|value my|what.?s my (home|property) worth/.test(hay))
-    return { intent: "valuation_request", confidence: 0.6, raw: { heuristic: true } };
+    return { intent: "valuation_request", confidence: 0.62, ...base };
   if (/repair|leak|broken|boiler|maintenance|tenancy/.test(hay))
-    return { intent: "tenant_or_maintenance", confidence: 0.6, raw: { heuristic: true } };
+    return { intent: "tenant_or_maintenance", confidence: 0.63, ...base };
   if (/invoice|supplier|partnership|advertis/.test(hay))
-    return { intent: "supplier", confidence: 0.55, raw: { heuristic: true } };
+    return { intent: "supplier", confidence: 0.58, ...base };
   if (/unsubscribe|viagra|crypto|\bseo\b/.test(hay))
-    return { intent: "spam", confidence: 0.7, raw: { heuristic: true } };
+    return { intent: "spam", confidence: 0.72, ...base };
 
   if (structuredViewing)
-    return { intent: "viewing_request", confidence: 0.7, raw: { heuristic: true } };
+    return { intent: "viewing_request", confidence: 0.74, ...base };
 
   if (/view|viewing|arrange|interested in|enquir/.test(hay))
-    return { intent: "viewing_request", confidence: 0.5, raw: { heuristic: true } };
+    return { intent: "viewing_request", confidence: 0.58, ...base };
 
-  return { intent: "other", confidence: 0.3, raw: { heuristic: true } };
+  return { intent: "other", confidence: 0.32, ...base };
 }
 
 export async function classify(
@@ -76,6 +78,7 @@ export async function classify(
       intent?: string;
       confidence?: number;
       reasoning?: string;
+      factualQuestion?: string | null;
     };
 
     const intent = VALID_INTENTS.includes(parsedOut.intent as Intent)
@@ -85,7 +88,12 @@ export async function classify(
       typeof parsedOut.confidence === "number" ? parsedOut.confidence : fallback.confidence;
     confidence = Math.max(0, Math.min(1, confidence));
 
-    return { intent, confidence, raw: parsedOut };
+    const fq =
+      typeof parsedOut.factualQuestion === "string" && parsedOut.factualQuestion.trim()
+        ? parsedOut.factualQuestion.trim()
+        : null;
+
+    return { intent, confidence, factualQuestion: fq, raw: parsedOut };
   } catch {
     return fallback;
   }

@@ -47,6 +47,31 @@ function isAutomatedBulk(msg: GraphMessage, parsed: ParsedEnquiry): boolean {
   return false;
 }
 
+// Do two enquiries concern the same property? Compare the agency reference token
+// first (most reliable), then fall back to a normalised postcode in the address.
+function agencyRefToken(ref: string | null): string | null {
+  if (!ref) return null;
+  const m = ref.match(/[A-Z]{2,4}\d{5,}/i);
+  return m ? m[0].toUpperCase() : ref.toUpperCase();
+}
+function postcodeKey(addr: string | null): string | null {
+  if (!addr) return null;
+  const m = addr.toUpperCase().match(/([A-Z]{1,2}\d[A-Z\d]?)\s*(\d[A-Z]{2})/);
+  return m ? `${m[1]}${m[2]}` : null;
+}
+function sameProperty(
+  a: { propertyReference: string | null; propertyAddress: string | null },
+  b: { propertyReference: string | null; propertyAddress: string | null }
+): boolean {
+  const ra = agencyRefToken(a.propertyReference);
+  const rb = agencyRefToken(b.propertyReference);
+  if (ra && rb) return ra === rb;
+  const pa = postcodeKey(a.propertyAddress);
+  const pb = postcodeKey(b.propertyAddress);
+  if (pa && pb) return pa === pb;
+  return false;
+}
+
 // Two independent eligibility gates (spec §6.5). Both must pass.
 function evaluateEligibility(
   parsed: ParsedEnquiry,
@@ -145,20 +170,27 @@ export async function decide(params: {
     base.suppressionReason = "ineligible_intent";
   }
 
-  // ── Dedupe: same applicant email within 30 minutes (spec §8) ────────────────
+  // ── Dedupe: same applicant email within 14 days (spec §8, widened) ──────────
+  // A repeat from the same person is the strongest signal nobody has called them.
   if (parsed.applicantEmail) {
-    const windowStart = new Date(receivedAt.getTime() - 30 * 60 * 1000);
-    const windowEnd = new Date(receivedAt.getTime() + 30 * 60 * 1000);
+    const windowStart = new Date(receivedAt.getTime() - 14 * 24 * 60 * 60 * 1000);
     const sibling = await prisma.enquiry.findFirst({
       where: {
         applicantEmail: parsed.applicantEmail,
         id: { not: currentEnquiryId },
-        receivedAt: { gte: windowStart, lte: windowEnd },
+        receivedAt: { gte: windowStart, lte: receivedAt },
       },
       orderBy: { receivedAt: "asc" },
-      select: { id: true },
+      select: { id: true, propertyReference: true, propertyAddress: true },
     });
-    if (sibling) base.duplicateOf = sibling.id;
+    if (sibling) {
+      base.duplicateOf = sibling.id;
+      // Same person, same property, within the window -> send to a human, not generate.
+      if (!base.suppressed && sameProperty(parsed, sibling)) {
+        base.suppressed = true;
+        base.suppressionReason = "repeat_enquiry";
+      }
+    }
   }
 
   return base;

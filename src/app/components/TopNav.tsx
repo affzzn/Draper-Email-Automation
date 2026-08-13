@@ -23,7 +23,7 @@ export default function TopNav() {
             <span className="l">LONDON</span>
           </span>
         </span>
-        <span className="badge">SHADOW MODE · NOTHING SENDS</span>
+        <span className="brand-sub">Enquiry Assistant</span>
       </div>
       <div className="tabs">
         <Link href="/" className={`tab ${isActive("/") ? "active" : ""}`}>

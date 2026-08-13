@@ -60,6 +60,7 @@ enum SuppressionReason {
   one_reply_per_thread
   human_replied_first
   ineligible_intent
+  repeat_enquiry
 }
 
 // One row per inbound message. Idempotent on graphMessageId (spec §5).
@@ -104,10 +105,14 @@ model Enquiry {
   intent           Intent?
   confidence       Float?
   classifierRaw    Json? // raw model output kept for calibration
+  factualQuestion  String? // the specific question they asked, for the follow-up call
 
   // Grading controls (§10). Filled by Innate during the shadow week.
   gradedClassificationCorrect Boolean?
   gradingNote                 String?
+
+  // Triage: who Craig assigns this enquiry to (null = channel default).
+  assignedTo String?
 
   decision Decision?
 

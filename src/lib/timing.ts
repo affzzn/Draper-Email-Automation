@@ -8,27 +8,28 @@ const LONDON = "Europe/London";
 //             otherwise same as immediate.
 // Europe/London handles BST automatically via the IANA tz database.
 export interface SendWindows {
-  immediate: Date;
-  held: Date;
+  immediate: Date; // received + 6 minutes (the standard rule)
+  held: Date; // final send time: overnight enquiries held to 05:30, else same as immediate
 }
 
-const PROCESSING_MS = 30 * 1000; // nominal pipeline time
+const SEND_DELAY_MS = 6 * 60 * 1000; // send 6 minutes after the enquiry is received
+const OVERNIGHT_CUTOFF_MIN = 5 * 60 + 30; // 05:30 London
 
 export function computeSendWindows(receivedAt: Date): SendWindows {
-  const immediate = new Date(receivedAt.getTime() + PROCESSING_MS);
+  const immediate = new Date(receivedAt.getTime() + SEND_DELAY_MS);
 
   const local = toZonedTime(receivedAt, LONDON);
-  const hour = local.getHours();
+  const minutesSinceMidnight = local.getHours() * 60 + local.getMinutes();
 
   let held = immediate;
-  if (hour >= 0 && hour < 4) {
-    // 05:30 on the same local calendar day as `local`
-    const y = local.getFullYear();
-    const m = local.getMonth();
-    const d = local.getDate();
-    // Build a London-local wall-clock time, convert back to a UTC instant.
-    const localHold = new Date(y, m, d, 5, 30, 0, 0);
-    held = fromZonedTime(localHold, LONDON);
+  // Anything received between 00:00 and 05:30 local goes out at 05:30 that day.
+  if (minutesSinceMidnight < OVERNIGHT_CUTOFF_MIN) {
+    const pad = (n: number) => String(n).padStart(2, "0");
+    // "05:30 London on the enquiry's local date" as an unambiguous wall-clock string.
+    const holdWallClock = `${local.getFullYear()}-${pad(local.getMonth() + 1)}-${pad(
+      local.getDate()
+    )}T05:30:00`;
+    held = fromZonedTime(holdWallClock, LONDON);
   }
 
   return { immediate, held };

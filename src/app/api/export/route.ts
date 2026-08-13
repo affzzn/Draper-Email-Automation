@@ -1,5 +1,6 @@
 import { toCsv } from "@/lib/csv";
 import { getEnquiryRows } from "@/lib/store";
+import { defaultAssignee } from "@/lib/assignees";
 
 export const dynamic = "force-dynamic";
 
@@ -23,6 +24,7 @@ const COLUMNS = [
   "aboutApplicant",
   "intent",
   "confidence",
+  "factualQuestion",
   "parseStatus",
   "parseNotes",
   "eligible",
@@ -31,8 +33,8 @@ const COLUMNS = [
   "suppressionReason",
   "duplicateOf",
   "propertyAvailability",
-  "wouldSendImmediate",
-  "wouldSendHeld",
+  "sendTime",
+  "assignedTo",
   "generatedReply",
   "alternativesSuggested",
   "classificationGraded",
@@ -124,6 +126,7 @@ export async function GET(req: Request) {
       aboutApplicant: e.aboutApplicant ?? "",
       intent: e.intent ?? "",
       confidence: e.confidence ?? "",
+      factualQuestion: e.factualQuestion ?? "",
       parseStatus: e.parseStatus,
       parseNotes: e.parseNotes.join(" | "),
       eligible: d ? (d.eligible ? "yes" : "no") : "",
@@ -132,8 +135,8 @@ export async function GET(req: Request) {
       suppressionReason: d?.suppressionReason ?? "",
       duplicateOf: d?.duplicateOf ?? "",
       propertyAvailability: meta?.availability ?? "",
-      wouldSendImmediate: fmtLondon(d?.wouldSendAtImmediate),
-      wouldSendHeld: fmtLondon(d?.wouldSendAtHeld),
+      sendTime: fmtLondon(d?.wouldSendAtHeld),
+      assignedTo: e.assignedTo ?? defaultAssignee(e.mailbox),
       generatedReply: toText(d?.generatedBody),
       alternativesSuggested: (meta?.alternatives ?? []).map((a) => a.url).join(" | "),
       classificationGraded: graded,
