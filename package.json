@@ -18,6 +18,8 @@
     "db:status": "bash scripts/localdb.sh status",
     "subscriptions:create": "tsx scripts/create-subscriptions.ts",
     "subscriptions:renew": "tsx scripts/renew-subscriptions.ts",
+    "prime": "tsx scripts/prime-delta.ts",
+    "poll": "tsx scripts/delta-backstop.ts",
     "backstop:delta": "tsx scripts/delta-backstop.ts",
     "report": "tsx scripts/report.ts",
     "snapshot": "tsx scripts/snapshot.ts",
