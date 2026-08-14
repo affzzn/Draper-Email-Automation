@@ -16,10 +16,26 @@ async function main() {
       const state = await prisma.deltaState.findUnique({
         where: { mailbox: mb.role },
       });
-      const { messages, deltaLink } = await deltaInbox(
-        mb.address,
-        state?.deltaLink ?? null
-      );
+      const cursor = state?.deltaLink ?? null;
+      const { messages, deltaLink } = await deltaInbox(mb.address, cursor);
+
+      // Safety: with no saved cursor, Graph returns the ENTIRE inbox history.
+      // Never classify that backlog (it would burn credits). Instead behave like
+      // `prime`: store the cursor and process nothing. From the next run on, only
+      // genuinely new mail arrives. This removes the deploy-order race entirely.
+      if (!cursor) {
+        if (deltaLink) {
+          await prisma.deltaState.upsert({
+            where: { mailbox: mb.role },
+            create: { mailbox: mb.role, deltaLink },
+            update: { deltaLink },
+          });
+        }
+        console.log(
+          `✓ delta ${mb.role}: not primed — stored cursor past ${messages.length} existing, processed 0`
+        );
+        continue;
+      }
 
       let processed = 0;
       for (const msg of messages) {
