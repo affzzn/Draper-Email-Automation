@@ -13,7 +13,7 @@ services:
     name: draper-shadow
     runtime: node
     plan: starter
-    buildCommand: npm ci && npm run build && npx prisma migrate deploy
+    buildCommand: npm ci --include=dev && npm run build && npx prisma migrate deploy
     startCommand: npm run start
     healthCheckPath: /api/health
     envVars:
@@ -58,7 +58,7 @@ services:
     runtime: node
     plan: starter
     schedule: "0 */6 * * *"
-    buildCommand: npm ci
+    buildCommand: npm ci --include=dev
     startCommand: npm run subscriptions:renew
     envVars:
       - key: DATABASE_URL
@@ -94,7 +94,7 @@ services:
     runtime: node
     plan: starter
     schedule: "*/15 * * * *"
-    buildCommand: npm ci
+    buildCommand: npm ci --include=dev
     startCommand: npm run backstop:delta
     envVars:
       - key: DATABASE_URL
