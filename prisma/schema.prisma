@@ -152,6 +152,13 @@ model Decision {
   transportRecord  Json? // what NoOpTransport was asked to "send"
   assignmentRecord Json? // what LoggingAssignmentSink recorded
 
+  // Real-send state (allowlisted test sending). Populated only by the sender
+  // worker (scripts/send-drafts.ts). Null until the worker first touches the row.
+  sentAt     DateTime? // when the reply was actually sent (null = never sent)
+  sendStatus String? // pending | sending | sent | blocked | error
+  sendError  String? // failure message when sendStatus = error
+  sendResult Json? // audit: graph reply id, recipient, timestamp
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }

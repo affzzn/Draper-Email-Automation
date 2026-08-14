@@ -104,6 +104,55 @@ export async function recentInboxMessages(
   return res.value ?? [];
 }
 
+// ── Sending replies (allowlisted test sending only) ──────────────────────────
+// These are the ONLY helpers that mutate a mailbox. They require the Azure app to
+// be granted Mail.Send (send) and Mail.ReadWrite (createReply draft + mark unread).
+// Threading is preserved by replying to the original message id: Graph keeps the
+// same conversationId and sets In-Reply-To / References, and prefixes "Re:".
+
+// Create a draft reply to `messageId` (threaded). Returns the draft's id.
+// replyAll=true replies to all original recipients; otherwise a plain reply.
+export async function createReplyDraft(
+  mailboxAddress: string,
+  messageId: string,
+  replyAll: boolean
+): Promise<{ id: string }> {
+  const action = replyAll ? "createReplyAll" : "createReply";
+  const draft = await graphClient()
+    .api(`/users/${mailboxAddress}/messages/${messageId}/${action}`)
+    .post({});
+  return { id: draft.id };
+}
+
+// Patch arbitrary properties on a message (e.g. body, toRecipients, isRead).
+export async function updateMessage(
+  mailboxAddress: string,
+  messageId: string,
+  patch: Record<string, unknown>
+): Promise<void> {
+  await graphClient()
+    .api(`/users/${mailboxAddress}/messages/${messageId}`)
+    .patch(patch);
+}
+
+// Send a previously-created draft message.
+export async function sendDraftMessage(
+  mailboxAddress: string,
+  messageId: string
+): Promise<void> {
+  await graphClient()
+    .api(`/users/${mailboxAddress}/messages/${messageId}/send`)
+    .post({});
+}
+
+// Mark the original enquiry unread so a human still sees it flagged (§ requirement).
+export async function markUnread(
+  mailboxAddress: string,
+  messageId: string
+): Promise<void> {
+  await updateMessage(mailboxAddress, messageId, { isRead: false });
+}
+
 // ── Subscriptions (spec §5) ──────────────────────────────────────────────────
 
 export interface GraphSubscription {

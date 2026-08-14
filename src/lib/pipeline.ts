@@ -147,6 +147,9 @@ export async function processMessage(
       generationMetadata: generationMetadata ?? undefined,
       transportRecord: transportResult ? (transportResult as unknown as object) : undefined,
       assignmentRecord: assignmentResult as unknown as object,
+      // Queue eligible drafts for the sender worker to consider (observability;
+      // the worker re-checks eligibility + allowlist before anything is sent).
+      sendStatus: generatedBody ? "pending" : undefined,
     },
   });
 

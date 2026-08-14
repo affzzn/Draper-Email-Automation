@@ -123,3 +123,40 @@ services:
         sync: false
       - key: MAILBOX_HELLO
         sync: false
+
+  # Sender worker: sends real replies for ALLOWLISTED senders only. Disabled by
+  # default — SEND_MODE is unset (=off) so this no-ops until deliberately enabled.
+  # Set SEND_MODE=dry to log intended sends, SEND_MODE=live to actually send.
+  # Requires Azure Mail.Send + Mail.ReadWrite (admin-consented) before going live.
+  - type: cron
+    name: draper-shadow-sender
+    runtime: node
+    plan: starter
+    schedule: "*/2 * * * *"
+    buildCommand: npm ci --include=dev
+    startCommand: npm run send:drafts
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: draper-shadow-db
+          property: connectionString
+      - key: DIRECT_URL
+        fromDatabase:
+          name: draper-shadow-db
+          property: connectionString
+      - key: SEND_MODE
+        sync: false
+      - key: SEND_ALLOWLIST
+        sync: false
+      - key: TENANT_ID
+        sync: false
+      - key: CLIENT_ID
+        sync: false
+      - key: CLIENT_SECRET
+        sync: false
+      - key: MAILBOX_SALES
+        sync: false
+      - key: MAILBOX_LETTINGS
+        sync: false
+      - key: MAILBOX_HELLO
+        sync: false
