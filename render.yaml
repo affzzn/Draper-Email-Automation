@@ -164,3 +164,22 @@ services:
         sync: false
       - key: MAILBOX_HELLO
         sync: false
+
+  # Property inventory sync: pulls Draper's public property feed into the DB so the
+  # Properties tab and enquiry enrichment stay current. Read-only on their site.
+  - type: cron
+    name: draper-shadow-properties
+    runtime: node
+    plan: starter
+    schedule: "0 6 * * *"
+    buildCommand: npm ci --include=dev
+    startCommand: npm run properties:sync
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: draper-shadow-db
+          property: connectionString
+      - key: DIRECT_URL
+        fromDatabase:
+          name: draper-shadow-db
+          property: connectionString
