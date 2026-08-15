@@ -51,3 +51,12 @@ export function sendMode(): SendMode {
   if (v === "live" || v === "dry") return v;
   return "off";
 }
+
+// Freshness window (minutes). A reply is only sent if its due time is within the
+// last N minutes — this prevents stale drafts (e.g. an enquiry that arrived while
+// sending was disabled) from firing off the moment sending is enabled. Anything
+// older is marked "stale" and never sent. Default 30; override with SEND_MAX_AGE_MINUTES.
+export function maxSendAgeMinutes(): number {
+  const v = parseInt(process.env.SEND_MAX_AGE_MINUTES ?? "", 10);
+  return Number.isFinite(v) && v > 0 ? v : 30;
+}

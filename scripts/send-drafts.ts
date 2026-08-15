@@ -1,7 +1,7 @@
 import "./loadEnv";
 import { prisma } from "../src/lib/prisma";
 import { GraphTransport } from "../src/lib/transport";
-import { isAllowlisted, sendMode } from "../src/lib/allowlist";
+import { isAllowlisted, sendMode, maxSendAgeMinutes } from "../src/lib/allowlist";
 import { mailboxByRole } from "../src/lib/mailboxes";
 
 // Sender worker — the ONLY place a real reply is sent. Deliberately does NOT call
@@ -19,7 +19,8 @@ async function main() {
     await prisma.$disconnect();
     return;
   }
-  console.log(`SEND_MODE=${mode} — scanning for due drafts…`);
+  const maxAgeMin = maxSendAgeMinutes();
+  console.log(`SEND_MODE=${mode}, freshness window=${maxAgeMin}min — scanning for due drafts…`);
 
   const now = new Date();
   const due = await prisma.decision.findMany({
@@ -51,11 +52,29 @@ async function main() {
   let sent = 0,
     blocked = 0,
     wouldSend = 0,
+    stale = 0,
     errored = 0;
 
   for (const d of due) {
     const e = d.enquiry;
     const to = e.applicantEmail;
+
+    // Freshness gate: never send a reply whose due time is older than the window.
+    // Stops backlog drafts (queued while sending was off) from firing on enable.
+    const ageMin = d.wouldSendAtImmediate
+      ? (now.getTime() - d.wouldSendAtImmediate.getTime()) / 60000
+      : Infinity;
+    if (ageMin > maxAgeMin) {
+      await prisma.decision.update({
+        where: { id: d.id },
+        data: { sendStatus: "stale" },
+      });
+      stale++;
+      console.log(
+        `  ⏳ stale ${e.mailbox}/${e.id} — due ${d.wouldSendAtImmediate?.toISOString()} is ${Math.round(ageMin)}min old (> ${maxAgeMin}min), not sending`
+      );
+      continue;
+    }
 
     // Gate: allowlist. Anyone not allowlisted is recorded as blocked and never sent.
     if (!isAllowlisted(to)) {
@@ -120,7 +139,7 @@ async function main() {
   }
 
   console.log(
-    `Done. sent=${sent} blocked=${blocked} wouldSend=${wouldSend} error=${errored}`
+    `Done. sent=${sent} blocked=${blocked} wouldSend=${wouldSend} stale=${stale} error=${errored}`
   );
   await prisma.$disconnect();
 }

@@ -148,6 +148,10 @@ services:
         sync: false
       - key: SEND_ALLOWLIST
         sync: false
+      # Only send replies whose due time is within this many minutes (freshness
+      # window). Older/backlog drafts are marked "stale" and never sent.
+      - key: SEND_MAX_AGE_MINUTES
+        value: "30"
       - key: TENANT_ID
         sync: false
       - key: CLIENT_ID
