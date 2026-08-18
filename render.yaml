@@ -12,6 +12,7 @@ services:
   - type: web
     name: draper-shadow
     runtime: node
+    autoDeploy: true
     plan: starter
     buildCommand: npm ci --include=dev && npm run build && npx prisma migrate deploy
     startCommand: npm run start
@@ -56,6 +57,7 @@ services:
   - type: cron
     name: draper-shadow-renew
     runtime: node
+    autoDeploy: true
     plan: starter
     schedule: "0 */6 * * *"
     buildCommand: npm ci --include=dev
@@ -92,6 +94,7 @@ services:
   - type: cron
     name: draper-shadow-delta
     runtime: node
+    autoDeploy: true
     plan: starter
     schedule: "*/15 * * * *"
     buildCommand: npm ci --include=dev
@@ -131,6 +134,7 @@ services:
   - type: cron
     name: draper-shadow-sender
     runtime: node
+    autoDeploy: true
     plan: starter
     schedule: "*/2 * * * *"
     buildCommand: npm ci --include=dev
@@ -170,6 +174,7 @@ services:
   - type: cron
     name: draper-shadow-properties
     runtime: node
+    autoDeploy: true
     plan: starter
     schedule: "0 6 * * *"
     buildCommand: npm ci --include=dev
