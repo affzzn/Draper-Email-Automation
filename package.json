@@ -23,6 +23,7 @@
     "poll": "tsx scripts/delta-backstop.ts",
     "backstop:delta": "tsx scripts/delta-backstop.ts",
     "send:drafts": "tsx scripts/send-drafts.ts",
+    "replay": "tsx scripts/replay.ts",
     "report": "tsx scripts/report.ts",
     "snapshot": "tsx scripts/snapshot.ts",
     "verify:graph": "tsx scripts/verify-graph.ts",
