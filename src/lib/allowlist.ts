@@ -6,6 +6,13 @@
 //      restriction). An env typo can only SHRINK the list — it can never add
 //      a stranger, because the hardcoded floor always applies.
 //
+// FULLY-LIVE ESCAPE: set SEND_ALLOWLIST to exactly "*" to lift the restriction
+// entirely and reply to ANY resolved, real applicant address (the hardcoded
+// floor no longer applies). This is the deliberate "go live to the public"
+// switch. It is reversible: unset it, or list specific addresses, to re-arm the
+// floor. Even with "*", a missing/unresolved address is still refused, and the
+// sender worker + transport still block portal-relay / no-reply recipients.
+//
 // This module is intentionally dependency-free and side-effect-free so it can be
 // called cheaply from multiple points (the sender worker AND inside the transport,
 // as defence in depth).
@@ -30,10 +37,16 @@ function envAllowlist(): string[] {
     .filter(Boolean);
 }
 
+// Fully-live switch: SEND_ALLOWLIST === "*" lifts the recipient restriction.
+function isUnrestricted(): boolean {
+  return (process.env.SEND_ALLOWLIST ?? "").trim() === "*";
+}
+
 // True only if `email` is permitted to receive a real send.
 export function isAllowlisted(email: string | null | undefined): boolean {
   const addr = normalize(email);
   if (!addr) return false; // fail closed on missing/unresolved applicant email
+  if (isUnrestricted()) return true; // fully live: floor lifted, any resolved address
   if (!HARDCODED_ALLOWLIST.includes(addr)) return false; // must clear the floor
   const env = envAllowlist();
   if (env.length > 0 && !env.includes(addr)) return false; // env may only shrink

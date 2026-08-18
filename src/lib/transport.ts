@@ -12,6 +12,7 @@ import {
   fetchMessage,
 } from "./graph";
 import { isAllowlisted } from "./allowlist";
+import { isNoReply } from "./parse";
 
 // Place our reply ABOVE the quoted original that Graph's createReply pre-fills, so the
 // applicant sees our message first and can scroll down to the original enquiry (§2.2).
@@ -70,6 +71,14 @@ export class GraphTransport implements Transport {
     if (!isAllowlisted(req.toEmail)) {
       throw new Error(
         `GraphTransport refused: ${req.toEmail ?? "(none)"} is not allowlisted`
+      );
+    }
+    // Correctness backstop: even when the allowlist is lifted (fully-live "*"),
+    // never reply into a portal relay or no-reply address — it bounces or lands
+    // in a Rightmove/Zoopla relay thread instead of reaching the applicant.
+    if (isNoReply(req.toEmail ?? "")) {
+      throw new Error(
+        `GraphTransport refused: ${req.toEmail ?? "(none)"} is a relay/no-reply address`
       );
     }
     if (!req.mailboxAddress || !req.originalMessageId) {
