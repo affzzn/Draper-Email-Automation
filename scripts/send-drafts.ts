@@ -29,7 +29,10 @@ async function main() {
       sentAt: null,
       eligible: true,
       suppressed: false,
-      duplicateOf: null,
+      // NOTE: do not exclude duplicateOf here. A same-person, same-property repeat is
+      // already suppressed (repeat_enquiry) and excluded by suppressed:false. A
+      // same-person, DIFFERENT-property repeat is a genuine lead we draft (spec §9.6),
+      // so it must also be sendable — matching the drafting logic in pipeline.ts.
       generatedBody: { not: null },
       wouldSendAtImmediate: { lte: now },
       OR: [{ sendStatus: null }, { sendStatus: "pending" }],
