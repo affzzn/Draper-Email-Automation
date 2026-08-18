@@ -188,7 +188,18 @@ export async function comparablesForEnquiry(opts: {
   }
 
   scored.sort((a, b) => b.score - a.score);
-  return scored.slice(0, Math.max(1, Math.min(opts.limit ?? 2, 3)));
+  // Don't offer two units on the same street (reads odd) — keep the best per street.
+  const seenStreets = new Set<string>();
+  const unique = scored.filter((x) => {
+    const key = (x.property.addressStreet ?? x.property.id)
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, " ")
+      .trim();
+    if (seenStreets.has(key)) return false;
+    seenStreets.add(key);
+    return true;
+  });
+  return unique.slice(0, Math.max(1, Math.min(opts.limit ?? 2, 3)));
 }
 
 // Back-compat: a single best comparable.
