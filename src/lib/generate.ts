@@ -136,8 +136,10 @@ function selectShape(
       msg
     ) && /\?/.test(msg);
   if (hasFactual) return "B";
+  // Actionable context only. A couple/family mention ("my wife and I") is NOT context
+  // to respond to — it invites gushing (Rule 19) and belongs in a bare Shape A reply.
   const hasContext =
-    /\brelocat|moving (from|over|to)|move[- ]?in|move date|first[- ]?time buyer|buying with|my (partner|husband|wife|family)|current lease|lease ends|corporate let|embassy|student|starting (work|a job)/i.test(
+    /\brelocat|moving (from|over|to)|move[- ]?in|move date|first[- ]?time buyer|current lease|lease ends|corporate let|embassy|student|starting (work|a job)/i.test(
       msg
     );
   // A proposed viewing day/time (extracted by the classifier, so any phrasing is caught)
