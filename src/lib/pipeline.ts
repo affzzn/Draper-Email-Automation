@@ -93,14 +93,17 @@ export async function processMessage(
     currentEnquiryId: enquiry.id,
   });
 
-  // Generate the body that WOULD be sent — eligible, unsuppressed, non-duplicate,
-  // and never for hello@ (spec §2/§7.2).
+  // Generate the body that WOULD be sent — eligible, unsuppressed, and never for
+  // hello@ (spec §2/§7.2). We deliberately do NOT skip merely because the same
+  // applicant emailed before: a same-person, same-PROPERTY repeat is already caught
+  // as a `repeat_enquiry` suppression (spec §9.6), so it is handled by `!suppressed`.
+  // A same-person, DIFFERENT-property enquiry is a genuine new lead and must still be
+  // drafted (it just opens as a repeat via isRepeat below, for tone).
   let generatedBody: string | null = null;
   let generationMetadata: object | null = null;
   const shouldGenerate =
     decision.eligible &&
     !decision.suppressed &&
-    !decision.duplicateOf &&
     mailbox !== "hello";
 
   if (shouldGenerate) {
