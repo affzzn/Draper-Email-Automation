@@ -9,8 +9,23 @@ import {
   updateMessage,
   sendDraftMessage,
   markUnread,
+  fetchMessage,
 } from "./graph";
 import { isAllowlisted } from "./allowlist";
+
+// Place our reply ABOVE the quoted original that Graph's createReply pre-fills, so the
+// applicant sees our message first and can scroll down to the original enquiry (§2.2).
+// Insert just after the opening <body> tag when present; otherwise put it on top.
+function embedAboveQuote(replyHtml: string, quotedDraftHtml: string): string {
+  const ours = `<div>${replyHtml}</div><br>`;
+  if (!quotedDraftHtml) return ours;
+  const m = quotedDraftHtml.match(/<body[^>]*>/i);
+  if (m) {
+    const at = quotedDraftHtml.indexOf(m[0]) + m[0].length;
+    return quotedDraftHtml.slice(0, at) + ours + quotedDraftHtml.slice(at);
+  }
+  return ours + quotedDraftHtml;
+}
 
 export interface SendRequest {
   enquiryId: string;
@@ -62,17 +77,20 @@ export class GraphTransport implements Transport {
     }
 
     // 1. Create a threaded draft reply (preserves conversationId + Re: + headers).
+    //    Graph pre-fills its body with the original enquiry quoted beneath.
     const draft = await createReplyDraft(
       req.mailboxAddress,
       req.originalMessageId,
       req.replyAll === true
     );
 
-    // 2. Set our generated HTML body and pin the recipient to the allowlisted
-    //    address (not whatever the original carried) — extra safety.
+    // 2. Keep that quoted original and put our reply ABOVE it (§2.2), instead of
+    //    overwriting the whole body. Pin the recipient to the allowlisted address and
+    //    cc the negotiator.
+    const quoted = (await fetchMessage(req.mailboxAddress, draft.id)).body?.content ?? "";
     const cc = (req.cc ?? []).filter(Boolean);
     await updateMessage(req.mailboxAddress, draft.id, {
-      body: { contentType: "HTML", content: req.body },
+      body: { contentType: "HTML", content: embedAboveQuote(req.body, quoted) },
       toRecipients: [{ emailAddress: { address: req.toEmail } }],
       ...(cc.length
         ? { ccRecipients: cc.map((a) => ({ emailAddress: { address: a } })) }
