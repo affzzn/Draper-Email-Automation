@@ -19,8 +19,11 @@ export interface ScoredProperty {
   reasons: string[];
 }
 
-// Only properties a buyer could actually act on. Never suggest a sold one.
-const AVAILABLE = ["for_sale", "to_let", "under_offer"] as const;
+// Only genuinely ON-MARKET properties may ever be SUGGESTED as an alternative.
+// Deliberately EXCLUDES under_offer — the feed uses it for "SSTC / under offer / let
+// agreed", i.e. effectively taken. Never cross-sell a taken property (this was
+// suggesting let-agreed flats). sold/let/withdrawn are excluded already.
+const AVAILABLE = ["for_sale", "to_let"] as const;
 
 // Suggest similar available properties. ~140 rows total, so we fetch the plausible
 // candidates and rank in memory rather than doing distance maths in SQL.

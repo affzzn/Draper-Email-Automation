@@ -103,7 +103,10 @@ function propertyShortForm(property: Property | null): string {
 function availabilityLabel(property: Property | null): "available" | "unknown" | "unavailable" {
   if (!property) return "unknown";
   if (["sold", "let", "withdrawn"].includes(property.status)) return "unavailable";
-  return "available"; // for_sale / to_let / under_offer
+  // under_offer = SSTC / under offer / let agreed. Still offer a viewing (Craig's
+  // "always say yes"), but never claim it is available — so treat it as "unknown".
+  if (property.status === "under_offer") return "unknown";
+  return "available"; // for_sale / to_let only
 }
 
 function channelFor(property: Property | null, mailbox: Mailbox): Channel {
