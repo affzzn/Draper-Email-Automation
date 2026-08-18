@@ -10,21 +10,30 @@ export function defaultAssignee(mailbox: string): Assignee {
   return "Craig";
 }
 
-// The negotiator's email, for cc'ing them on the reply (§2.4). Read from the
-// ASSIGNEE_EMAILS env var, format "Olivia=olivia@draperlondon.com;Craig=craig@...".
-// FAIL-SAFE: returns null if the name has no valid email configured, so we simply
-// don't cc rather than cc a guess (important now that sending is live).
+// Negotiator emails, for cc'ing them on the reply (§2.4). Hardcoded per Affan.
+const ASSIGNEE_EMAILS: Record<string, string> = {
+  olivia: "olivia.rael-brook@draperlondon.com",
+  craig: "craig.draper@draperlondon.com",
+  aaron: "aaron.menashy@draperlondon.com",
+  mitchell: "mitchell.murphy@draperlondon.com",
+};
+
+const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+
+// The negotiator's email for the cc. FAIL-SAFE: returns null for an unknown name, so
+// we simply don't cc rather than cc a guess. An ASSIGNEE_EMAILS env var (same
+// "Name=email;..." format) overrides the hardcoded map if ever needed, but is optional.
 export function assigneeEmail(name: string | null | undefined): string | null {
   if (!name) return null;
-  const raw = process.env.ASSIGNEE_EMAILS ?? "";
-  for (const pair of raw.split(/[;,\n]/)) {
+  const key = name.trim().toLowerCase();
+  for (const pair of (process.env.ASSIGNEE_EMAILS ?? "").split(/[;,\n]/)) {
     const eq = pair.indexOf("=");
     if (eq === -1) continue;
-    const n = pair.slice(0, eq).trim();
-    const email = pair.slice(eq + 1).trim();
-    if (n.toLowerCase() === name.toLowerCase() && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
-      return email;
+    if (pair.slice(0, eq).trim().toLowerCase() === key) {
+      const email = pair.slice(eq + 1).trim();
+      if (EMAIL_RE.test(email)) return email;
     }
   }
-  return null;
+  const email = ASSIGNEE_EMAILS[key];
+  return email && EMAIL_RE.test(email) ? email : null;
 }

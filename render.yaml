@@ -156,11 +156,6 @@ services:
       # window). Older/backlog drafts are marked "stale" and never sent.
       - key: SEND_MAX_AGE_MINUTES
         value: "30"
-      # §2.4: cc the routed negotiator. Format: "Olivia=olivia@draperlondon.com;
-      # Craig=craig@draperlondon.com;Aaron=aaron@...;Mitchell=mitchell@...". If a name
-      # has no valid email here, the reply sends without a cc (never a guessed address).
-      - key: ASSIGNEE_EMAILS
-        sync: false
       - key: TENANT_ID
         sync: false
       - key: CLIENT_ID
