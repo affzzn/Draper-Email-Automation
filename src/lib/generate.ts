@@ -70,10 +70,22 @@ export function removeLongDashes(s: string): string {
 function wordCount(html: string): number {
   return html
     .replace(/<[^>]+>/g, " ")
-    .replace(/\{\{SIGNATURE\}\}|\{\{ALT_1\}\}/g, "")
+    .replace(/\{\{SIGNATURE\}\}|\{\{ALT_[123]\}\}/g, "")
     .trim()
     .split(/\s+/)
     .filter(Boolean).length;
+}
+
+// Fill a template token WITHOUT String.replace's "$&"/"$'" replacement patterns —
+// applicant text containing "$" must never garble the prompt. split/join is literal.
+function fill(template: string, token: string, value: string): string {
+  return template.split(token).join(value);
+}
+
+// Applicant-controlled text goes into the prompt as data. Strip anything that looks
+// like our own template tokens so it can't spoof {{ALT_1}}/{{SIGNATURE}} handling.
+function safeText(s: string | null | undefined): string {
+  return (s ?? "").replace(/\{\{|\}\}/g, " ");
 }
 
 function outcodeOf(address: string | null): string | null {
@@ -281,15 +293,23 @@ export async function generateReply(params: {
     });
   }
 
-  // Enquired-property context for the model (v3 requiredInputs).
-  const propPrice = property?.priceFormatted ?? (property?.priceActual ? `£${property.priceActual.toLocaleString()}` : "(price not known)");
-  const propBeds = property?.bedrooms != null ? String(property.bedrooms) : "";
-  const propType = typeWord(property?.propertyType) ?? "property";
+  // Enquired-property context for the model (v3 requiredInputs), as one clean line —
+  // no malformed ", bedroom property" fragment when nothing matched.
+  const propertyFacts = property
+    ? [
+        property.priceFormatted ??
+          (property.priceActual ? `£${property.priceActual.toLocaleString()}` : null),
+        property.bedrooms != null ? `${property.bedrooms} bedroom` : null,
+        typeWord(property.propertyType),
+      ]
+        .filter(Boolean)
+        .join(", ")
+    : "(not matched to one of our listings; rely only on the fields above and invent nothing)";
 
   // Strong per-enquiry directive to name the proposed day/time back (the classifier
   // extracts it, so any phrasing is caught). Empty when none was proposed.
   const proposedTimeNote = classification.proposedTime
-    ? `The applicant proposed this for the viewing: "${classification.proposedTime}". You MUST acknowledge it by naming it back to them, then ask what exact time within it would suit. Never reply with a generic "when would suit" when a day or time was given.`
+    ? `The applicant proposed this for the viewing: "${safeText(classification.proposedTime)}". You MUST acknowledge it by naming it back to them, then ask what exact time within it would suit. Never reply with a generic "when would suit" when a day or time was given.`
     : "";
   // Never engage with a "property to sell" / valuation signal on a viewing enquiry
   // (Craig: do not offer a valuation to an applicant). Drop it from the context.
@@ -300,24 +320,25 @@ export async function generateReply(params: {
     : parsed.aboutApplicant ?? "";
 
   const systemPrompt = generationConfig.systemPrompt;
-  const userPrompt = generationConfig.userPromptTemplate
-    .replace("{{shape}}", shape)
-    .replace("{{intent}}", classification.intent)
-    .replace("{{signOff}}", signOff)
-    .replace("{{firstName}}", firstName ?? "")
-    .replace("{{channel}}", channel)
-    .replace("{{propertyShort}}", propertyShort || "(none, say 'the property')")
-    .replace("{{availability}}", availability)
-    .replace("{{message}}", parsed.messageBody ?? "")
-    .replace("{{budget}}", parsed.budgetRaw ?? "")
-    .replace("{{requirements}}", parsed.requirements ?? "")
-    .replace("{{about}}", aboutForModel)
-    .replace("{{proposedTimeNote}}", proposedTimeNote)
-    .replace("{{propertyPrice}}", propPrice)
-    .replace("{{propertyBedrooms}}", propBeds)
-    .replace("{{propertyType}}", propType)
-    .replace("{{alternativeDescription}}", altDescriptions(altsToUse))
-    .replace("{{isRepeat}}", params.isRepeat ? "true" : "false");
+  let userPrompt = generationConfig.userPromptTemplate;
+  const fills: [string, string][] = [
+    ["{{shape}}", shape],
+    ["{{intent}}", classification.intent],
+    ["{{signOff}}", signOff],
+    ["{{firstName}}", firstName ?? ""],
+    ["{{channel}}", channel],
+    ["{{propertyShort}}", propertyShort || "(none, say 'the property')"],
+    ["{{availability}}", availability],
+    ["{{message}}", safeText(parsed.messageBody)],
+    ["{{budget}}", safeText(parsed.budgetRaw)],
+    ["{{requirements}}", safeText(parsed.requirements)],
+    ["{{about}}", safeText(aboutForModel)],
+    ["{{proposedTimeNote}}", proposedTimeNote],
+    ["{{propertyFacts}}", propertyFacts],
+    ["{{alternativeDescription}}", altDescriptions(altsToUse)],
+    ["{{isRepeat}}", params.isRepeat ? "true" : "false"],
+  ];
+  for (const [token, value] of fills) userPrompt = fill(userPrompt, token, value);
 
   let body: string | null = null;
   let generatedByLLM = false;
