@@ -21,15 +21,19 @@ export async function complete(params: {
 }): Promise<string | null> {
   const a = anthropic();
   if (!a) return null;
-  // Note: newer models (e.g. claude-sonnet-5) reject an explicit `temperature`.
-  // Only include it when caller opts in AND we're on a model that accepts it.
+  // Note: the current model generation (Fable 5, Opus 5, Opus 4.7/4.8, Sonnet 5)
+  // REJECTS an explicit `temperature` with a 400. Only include it when the caller
+  // opts in AND we're on an older model that still accepts it — otherwise the call
+  // 400s and the caller silently falls back (e.g. the classifier drops to its
+  // keyword heuristic). Match the models that reject it and never send it to them.
   const body: Anthropic.MessageCreateParamsNonStreaming = {
     model: anthropicModel(),
     max_tokens: params.maxTokens ?? 600,
     system: params.system,
     messages: [{ role: "user", content: params.user }],
   };
-  if (params.temperature !== undefined && !/sonnet-5|opus-5|haiku-5/.test(anthropicModel())) {
+  const rejectsTemperature = /fable-5|opus-5|sonnet-5|haiku-5|opus-4-[78]/.test(anthropicModel());
+  if (params.temperature !== undefined && !rejectsTemperature) {
     body.temperature = params.temperature;
   }
   const res = await a.messages.create(body);

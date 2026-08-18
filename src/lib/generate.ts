@@ -310,7 +310,7 @@ export async function generateReply(params: {
   // Strong per-enquiry directive to name the proposed day/time back (the classifier
   // extracts it, so any phrasing is caught). Empty when none was proposed.
   const proposedTimeNote = classification.proposedTime
-    ? `The applicant proposed this for the viewing: "${safeText(classification.proposedTime)}". You MUST acknowledge it by naming it back to them, then ask what exact time within it would suit. Never reply with a generic "when would suit" when a day or time was given.`
+    ? `The applicant proposed this for the viewing: "${safeText(classification.proposedTime)}". Refer to what they proposed so they can see it was read, but you have no diary access and must NOT say or imply it works, is fine, is available or suits us. Tell them you will confirm availability and come back to them on the timing (you may also ask what exact time within their window would suit, only as noting their preference). Never confirm or book a slot, and never fall back to a generic "when would suit" that ignores the time they gave. Put this after the viewing offer, not before it.`
     : "";
   // Never engage with a "property to sell" / valuation signal on a viewing enquiry
   // (Craig: do not offer a valuation to an applicant). Drop it from the context.

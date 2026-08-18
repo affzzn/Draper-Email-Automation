@@ -51,6 +51,6 @@ export const env = {
     return optional("ANTHROPIC_API_KEY", "");
   },
   get anthropicModel() {
-    return optional("ANTHROPIC_MODEL", "claude-sonnet-5");
+    return optional("ANTHROPIC_MODEL", "claude-opus-4-8");
   },
 };

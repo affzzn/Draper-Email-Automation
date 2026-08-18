@@ -41,7 +41,7 @@ services:
       - key: ANTHROPIC_API_KEY
         sync: false
       - key: ANTHROPIC_MODEL
-        value: claude-sonnet-5
+        value: claude-opus-4-8
       - key: GRAPH_CLIENT_STATE
         sync: false
       - key: CRON_SECRET
@@ -119,7 +119,7 @@ services:
       - key: ANTHROPIC_API_KEY
         sync: false
       - key: ANTHROPIC_MODEL
-        value: claude-sonnet-5
+        value: claude-opus-4-8
       - key: MAILBOX_SALES
         sync: false
       - key: MAILBOX_LETTINGS
