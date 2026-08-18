@@ -48,6 +48,12 @@ export interface EnquiryRow {
   gradedClassificationCorrect: boolean | null;
   gradingNote: string | null;
   assignedTo: string | null;
+  matchedPropertyId: string | null;
+  matchedPrice: number | null;
+  matchedBedrooms: number | null;
+  matchedType: string | null;
+  matchConfidence: number | null;
+  matchMethod: string | null;
   rawSubject: string;
   rawBodyText: string;
   rawBodyHtml: string;
@@ -139,6 +145,12 @@ export async function getEnquiryRows(): Promise<EnquiryRow[]> {
     gradedClassificationCorrect: e.gradedClassificationCorrect,
     gradingNote: e.gradingNote,
     assignedTo: e.assignedTo,
+    matchedPropertyId: e.matchedPropertyId,
+    matchedPrice: e.matchedPrice,
+    matchedBedrooms: e.matchedBedrooms,
+    matchedType: e.matchedType,
+    matchConfidence: e.matchConfidence,
+    matchMethod: e.matchMethod,
     rawSubject: e.rawSubject,
     rawBodyText: e.rawBodyText,
     rawBodyHtml: e.rawBodyHtml,

@@ -8,6 +8,11 @@ import { generateReply } from "./generate";
 import { defaultTransport } from "./transport";
 import { defaultAssignmentSink } from "./assignment";
 import { mailboxByRole } from "./mailboxes";
+import { matchPropertyForEnquiry, typeWord } from "./propertyLink";
+
+// Below this confidence a property match is recorded (and shown) but NOT trusted to
+// drive the reply — a wrong price/type is worse than none (spec §5.1).
+const MATCH_TRUST_THRESHOLD = 0.75;
 
 // Process one Graph message end-to-end. Idempotent on graphMessageId (spec §5).
 // Returns the enquiry id. Safe to call repeatedly for the same message.
@@ -48,6 +53,10 @@ export async function processMessage(
   // Classify (LLM with deterministic fallback).
   const classification = await classify(parsed, msg.subject ?? "");
 
+  // Match the enquiry to our own listing (§5.1) so price/beds/type land on the record
+  // for alternatives, the £2m routing, and naming the property type in the reply.
+  const match = await matchPropertyForEnquiry(parsed);
+
   // Persist the enquiry first so decide() can run dedupe / thread lookups against it.
   const enquiry = await prisma.enquiry.create({
     data: {
@@ -80,6 +89,12 @@ export async function processMessage(
       confidence: classification.confidence,
       classifierRaw: classification.raw as object,
       factualQuestion: classification.factualQuestion,
+      matchedPropertyId: match.property?.id ?? null,
+      matchedPrice: match.property?.priceActual ?? null,
+      matchedBedrooms: match.property?.bedrooms ?? null,
+      matchedType: typeWord(match.property?.propertyType) ?? null,
+      matchConfidence: match.confidence,
+      matchMethod: match.method,
     },
   });
 
@@ -111,6 +126,9 @@ export async function processMessage(
       mailbox,
       classification,
       isRepeat: !!decision.duplicateOf,
+      // Only let a confident match drive the reply; a weak one is shown but not trusted.
+      property:
+        match.confidence >= MATCH_TRUST_THRESHOLD ? match.property : null,
     });
     generatedBody = reply.body;
     generationMetadata = reply.metadata;

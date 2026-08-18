@@ -115,6 +115,16 @@ model Enquiry {
   // Triage: who Craig assigns this enquiry to (null = channel default).
   assignedTo String?
 
+  // Property match (§5.1). The listing from our Property DB this enquiry is about,
+  // resolved once in the pipeline. Powers alternatives, the £2m routing, and naming
+  // the property type. Confidence makes a wrong match visible rather than silent.
+  matchedPropertyId String?
+  matchedPrice      Int?
+  matchedBedrooms   Int?
+  matchedType       String?
+  matchConfidence   Float?
+  matchMethod       String? // reference | postcode | street_outcode | none
+
   decision Decision?
 
   createdAt DateTime @default(now())

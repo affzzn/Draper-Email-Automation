@@ -134,7 +134,40 @@ export default async function Page({ searchParams }: { searchParams: Promise<SP>
                       <div className="strong">{e.applicantName ?? "—"}</div>
                       {e.applicantEmail && <div className="small mono">{e.applicantEmail}</div>}
                     </td>
-                    <td>{e.propertyAddress ?? e.propertyReference ?? <span className="faintdash">—</span>}</td>
+                    <td>
+                      <div>{e.propertyAddress ?? e.propertyReference ?? <span className="faintdash">—</span>}</div>
+                      {e.matchMethod && e.matchMethod !== "none" ? (
+                        <div className="small">
+                          <span className="mono">
+                            {[
+                              e.matchedPrice != null ? `£${e.matchedPrice.toLocaleString()}` : null,
+                              e.matchedBedrooms != null ? `${e.matchedBedrooms} bed` : null,
+                              e.matchedType,
+                            ].filter(Boolean).join(" · ")}
+                          </span>
+                          {e.matchConfidence != null && (
+                            <span
+                              style={{
+                                marginLeft: 6,
+                                fontSize: 11,
+                                fontWeight: 600,
+                                color:
+                                  e.matchConfidence >= 0.8
+                                    ? "#2e7d32"
+                                    : e.matchConfidence >= 0.6
+                                    ? "#b26a00"
+                                    : "#b3261e",
+                              }}
+                            >
+                              {Math.round(e.matchConfidence * 100)}% match
+                              {review ? ` · ${e.matchMethod}` : ""}
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="small faintdash">no listing match</div>
+                      )}
+                    </td>
                     <td>{e.intent ? TYPE_LABEL[e.intent] ?? e.intent : "—"}
                       {review && e.confidence != null && <div className="small mono">{e.confidence.toFixed(2)}</div>}
                       {review && e.factualQuestion && <div className="reason">Q: {e.factualQuestion}</div>}

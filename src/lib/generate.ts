@@ -208,11 +208,17 @@ export async function generateReply(params: {
   isRepeat?: boolean;
   /** v5: first name of the person this enquiry was routed to. Signs the reply. */
   signOffName?: string | null;
+  /** §5.1: the matched listing, resolved once in the pipeline. Pass null to force
+   *  "no match"; omit entirely and the generator resolves it itself (direct callers). */
+  property?: Property | null;
 }): Promise<GeneratedReply> {
   const { parsed, mailbox, classification } = params;
   const firstName = parsed.applicantName ? parsed.applicantName.split(/\s+/)[0] : null;
 
-  const property = await resolvePropertyForEnquiry(parsed);
+  const property =
+    params.property !== undefined
+      ? params.property
+      : await resolvePropertyForEnquiry(parsed);
   const propertyShort = propertyShortForm(property);
   const availability = availabilityLabel(property);
   const channel = channelFor(property, mailbox);
