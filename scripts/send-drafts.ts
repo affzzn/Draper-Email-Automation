@@ -155,7 +155,7 @@ async function main() {
   }
 
   console.log(
-    `Done. sent=${sent} blocked=${blocked} wouldSend=${wouldSend} stale=${stale} error=${errored}`
+    `Done. sent=${sent} blocked=${blocked} wouldSend=${wouldSend} stale=${stale} failed=${errored}`
   );
   await prisma.$disconnect();
 }
