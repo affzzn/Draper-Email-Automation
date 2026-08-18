@@ -4,6 +4,7 @@ import { GraphTransport } from "../src/lib/transport";
 import { isAllowlisted, sendMode, maxSendAgeMinutes } from "../src/lib/allowlist";
 import { mailboxByRole } from "../src/lib/mailboxes";
 import { isNoReply } from "../src/lib/parse";
+import { assigneeEmail } from "../src/lib/assignees";
 
 // Sender worker — the ONLY place a real reply is sent. Deliberately does NOT call
 // assertShadowMode (that guards the drafting path). Sending is gated by four
@@ -47,6 +48,8 @@ async function main() {
           isReplyAllRequired: true,
           propertyAddress: true,
           propertyReference: true,
+          routedTo: true,
+          assignedTo: true,
         },
       },
     },
@@ -122,6 +125,15 @@ async function main() {
     const mailboxAddress = mailboxByRole(e.mailbox).address;
     const subject = `Re: ${e.propertyAddress ?? e.propertyReference ?? "your enquiry"}`;
 
+    // §2.4: cc the negotiator handling it (manual assignment wins over auto-routing).
+    // Fail-safe: no valid email configured -> no cc, never a guess.
+    const owner = e.assignedTo ?? e.routedTo;
+    const ownerEmail = assigneeEmail(owner);
+    const cc = ownerEmail ? [ownerEmail] : [];
+    if (owner && !ownerEmail) {
+      console.log(`  (no email configured for ${owner} — sending without cc)`);
+    }
+
     try {
       const result = await new GraphTransport().send({
         enquiryId: e.id,
@@ -132,6 +144,7 @@ async function main() {
         mailboxAddress,
         originalMessageId: e.graphMessageId,
         replyAll: e.isReplyAllRequired === true,
+        cc,
       });
       await prisma.decision.update({
         where: { id: d.id },
@@ -142,7 +155,7 @@ async function main() {
         },
       });
       sent++;
-      console.log(`  ✅ sent to ${to} (${e.mailbox}/${e.id}) — reply ${result.record.graphReplyId}`);
+      console.log(`  ✅ sent to ${to}${cc.length ? ` (cc ${cc.join(", ")})` : ""} (${e.mailbox}/${e.id}) — reply ${result.record.graphReplyId}`);
     } catch (err) {
       const msg = (err as Error).message;
       await prisma.decision.update({

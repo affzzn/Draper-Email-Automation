@@ -24,19 +24,18 @@ export interface GeneratedReply {
 
 const signatures: Record<string, string> = generationConfig.signatures as Record<string, string>;
 const signOffs: string[] = generationConfig.signOffs;
-const SIGNOFF_NAME_FALLBACK: string = generationConfig.signOffNameFallback ?? "Craig";
 const MAX_ALTS: number = generationConfig.alternativesPolicy?.maxPerReply ?? 3;
 const HARD = generationConfig.wordLimitHard ?? 90;
 
 // v5: the reply always sends from the inbox address, but the NAME at the bottom
 // follows whoever the enquiry was routed to (Craig, 14 Aug call). {{SIGNATURE}}
 // therefore expands to that name plus the inbox's own signature block.
-function signatureFor(mailbox: Mailbox, signOffName?: string | null): string {
+// We add NO signature of our own — no name, no block. The negotiator is cc'd (§2.4),
+// and the mailbox appends its own branded Draper signature on send. {{SIGNATURE}}
+// expands to the inbox block only, which is currently empty (so: nothing).
+function signatureFor(mailbox: Mailbox): string {
   const raw = (signatures[mailbox] ?? signatures.sales ?? "").trim();
-  const name = (signOffName ?? "").trim() || SIGNOFF_NAME_FALLBACK;
-  // No inbox block configured (current default) -> just the name, nothing else.
-  if (!raw) return name;
-  return `${name}<br>${raw.replace(/\n/g, "<br>")}`;
+  return raw ? raw.replace(/\n/g, "<br>") : "";
 }
 
 function hashPick<T>(arr: T[], seed: string): T {
@@ -372,8 +371,11 @@ export async function generateReply(params: {
   });
   resolved = resolved.replace(/<p>\s*<\/p>/g, "");
   resolved = removeLongDashes(
-    resolved.replace(/\{\{SIGNATURE\}\}/g, signatureFor(mailbox, params.signOffName))
+    resolved.replace(/\{\{SIGNATURE\}\}/g, signatureFor(mailbox))
   );
+  // With no signature after it, drop a dangling "<br>" left before the paragraph close
+  // (so "Kind regards,<br>" doesn't leave a stray blank line before the mailbox block).
+  resolved = resolved.replace(/<br\s*\/?>\s*<\/p>/gi, "</p>").replace(/<p>\s*<\/p>/g, "");
   // Hard guarantee on the banned house word: "happy" -> "delighted" (Rule 13), case-kept.
   resolved = resolved
     .replace(/\bHappy\b/g, "Delighted")

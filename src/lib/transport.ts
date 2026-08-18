@@ -22,6 +22,7 @@ export interface SendRequest {
   mailboxAddress?: string; // the Draper mailbox that received the enquiry
   originalMessageId?: string; // Graph id of the original enquiry message
   replyAll?: boolean; // reply-all vs plain reply
+  cc?: string[]; // §2.4: cc the routed negotiator
 }
 
 export interface SendResult {
@@ -69,9 +70,13 @@ export class GraphTransport implements Transport {
 
     // 2. Set our generated HTML body and pin the recipient to the allowlisted
     //    address (not whatever the original carried) — extra safety.
+    const cc = (req.cc ?? []).filter(Boolean);
     await updateMessage(req.mailboxAddress, draft.id, {
       body: { contentType: "HTML", content: req.body },
       toRecipients: [{ emailAddress: { address: req.toEmail } }],
+      ...(cc.length
+        ? { ccRecipients: cc.map((a) => ({ emailAddress: { address: a } })) }
+        : {}),
     });
 
     // 3. Send it.
