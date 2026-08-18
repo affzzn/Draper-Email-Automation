@@ -156,6 +156,10 @@ services:
       # window). Older/backlog drafts are marked "stale" and never sent.
       - key: SEND_MAX_AGE_MINUTES
         value: "30"
+      # Negotiator cc addresses (§2.4): the routed/assigned owner is cc'd on the
+      # reply. Name=email pairs; unmatched owner -> no cc (never a guess).
+      - key: ASSIGNEE_EMAILS
+        value: "Olivia=olivia.rael-brook@draperlondon.com;Craig=craig.draper@draperlondon.com;Aaron=aaron.menashy@draperlondon.com;Mitchell=mitchell.murphy@draperlondon.com"
       - key: TENANT_ID
         sync: false
       - key: CLIENT_ID
