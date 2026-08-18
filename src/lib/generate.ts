@@ -136,7 +136,13 @@ function selectShape(
     /\brelocat|moving (from|over|to)|move[- ]?in|move date|first[- ]?time buyer|buying with|my (partner|husband|wife|family)|current lease|lease ends|corporate let|embassy|student|starting (work|a job)/i.test(
       msg
     );
-  if (hasContext) return "C";
+  // A proposed viewing day/time is concrete detail to acknowledge (Rule 16), not a bare
+  // enquiry — route to Shape C so the reply names it instead of a generic "when suits".
+  const proposesTime =
+    /\b(mon|tues|wednes|thurs|fri|satur|sun)day\b|\btoday\b|\btomorrow\b|\bthis (week|weekend|morning|afternoon|evening)\b|\bnext week\b|\b\d{1,2}(:\d{2})?\s?(a\.?m\.?|p\.?m\.?)\b|\baround (noon|midday|\d)/i.test(
+      msg
+    );
+  if (hasContext || proposesTime) return "C";
   return "A";
 }
 
