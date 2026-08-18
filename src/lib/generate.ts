@@ -25,7 +25,6 @@ export interface GeneratedReply {
 const signatures: Record<string, string> = generationConfig.signatures;
 const signOffs: string[] = generationConfig.signOffs;
 const HARD = generationConfig.wordLimitHard ?? 90;
-const SUPPRESS = generationConfig.alternativesPolicy.suppressAboveValue;
 
 function signatureFor(mailbox: Mailbox): string {
   const raw = signatures[mailbox] ?? signatures.sales;
@@ -134,13 +133,6 @@ function askedWhatElse(message: string | null): boolean {
   );
 }
 
-function suppressAltByValue(channel: Channel, property: Property | null): boolean {
-  if (!property?.priceActual) return false;
-  if (channel === "sales") return property.priceActual > SUPPRESS.salesAskingPrice;
-  if (channel === "lettings") return property.priceActual > SUPPRESS.lettingsPcm;
-  return false;
-}
-
 function altDescription(a: ScoredProperty): string {
   const p = a.property;
   const tw = typeWord(p.propertyType) ?? "property";
@@ -198,9 +190,11 @@ export async function generateReply(params: {
   const signOff = hashPick(signOffs, parsed.applicantEmail ?? propertyShort ?? "x");
   const shape = selectShape(availability, classification.factualQuestion, parsed.messageBody);
 
-  // Alternatives (v3): decided entirely in code. Suppress on high value, on repeats,
-  // and on shape B unless they explicitly asked about others. Otherwise offer one IF a
-  // genuinely comparable property exists nearby (the "Anshika case"), never a weak match.
+  // Alternatives (v4): decided entirely in code. Suppress on repeats, and on shape B
+  // unless they explicitly asked about others. Otherwise offer one IF a genuinely
+  // comparable property exists nearby (the "Anshika case"), never a weak match.
+  // (14 Aug call: the >£2m / >£7,500 value suppression was removed — the 10% band
+  // already yields nothing to cross-sell at the top of the market.)
   const asked = askedWhatElse(parsed.messageBody);
   const reqBeds = bedroomsHintFrom(parsed.requirements);
   const seedOutcode = property?.outcode ?? outcodeOf(parsed.propertyAddress);
@@ -209,7 +203,6 @@ export async function generateReply(params: {
 
   let altToUse: ScoredProperty | null = null;
   const suppressAlt =
-    suppressAltByValue(channel, property) ||
     params.isRepeat === true ||
     (shape === "B" && !asked);
 

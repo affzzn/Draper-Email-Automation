@@ -136,8 +136,9 @@ export async function comparableForEnquiry(opts: {
   excludeAddress?: string | null;
 }): Promise<ScoredProperty | null> {
   const area = opts.seedOutcode.replace(/\d.*$/, ""); // "NW6" -> "NW"
-  const priceLo = Math.round(opts.seedPrice * 0.75);
-  let priceHi = Math.round(opts.seedPrice * 1.25);
+  // Comparable band: 10% above or below the enquired price (Craig, 14 Aug call).
+  const priceLo = Math.round(opts.seedPrice * 0.9);
+  let priceHi = Math.round(opts.seedPrice * 1.1);
   if (opts.budgetMax) priceHi = Math.min(priceHi, opts.budgetMax);
 
   const cands = await prisma.property.findMany({
@@ -168,7 +169,7 @@ export async function comparableForEnquiry(opts: {
     let score = 0;
     const reasons: string[] = [];
     const pd = Math.abs(p.priceActual! - opts.seedPrice) / opts.seedPrice;
-    score += Math.max(0, 1 - pd / 0.25) * 3;
+    score += Math.max(0, 1 - pd / 0.1) * 3;
     reasons.push(`price ${Math.round(pd * 100)}% away`);
     if (p.outcode === opts.seedOutcode) {
       score += 2;
