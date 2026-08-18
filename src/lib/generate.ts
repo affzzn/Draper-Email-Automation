@@ -125,7 +125,10 @@ function selectShape(
   const msg = message ?? "";
   const hasFactual =
     !!factualQuestion ||
-    /\b(lease|service charge|epc|available|availability|pets?|parking|chain|tenure|square (feet|footage)|sq ?ft|council tax|furnished|unfurnished|garden|deposit)\b\??/i.test(
+    // Genuine look-up facts only. Availability is NOT here (a "is it available?"
+    // question is answered by the availability field / handled as a normal viewing,
+    // never as "I will find out"), nor are viewing times (Rule 4.6 handles those).
+    /\b(lease|service charge|ground rent|epc|pets?|parking|chain|tenure|square (feet|footage)|sq ?ft|council tax|furnished|unfurnished|garden|deposit)\b\??/i.test(
       msg
     ) && /\?/.test(msg);
   if (hasFactual) return "B";
