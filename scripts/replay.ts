@@ -85,16 +85,16 @@ async function main() {
     const classification = await classify(parsed, e.rawSubject ?? "");
     stats.intents[classification.intent] = (stats.intents[classification.intent] ?? 0) + 1;
 
-    const match = await matchPropertyForEnquiry(parsed);
+    const enquiryChannel: "sales" | "lettings" =
+      e.mailbox === "lettings" ? "lettings" : "sales";
+    const match = await matchPropertyForEnquiry(parsed, enquiryChannel);
     const priceConfident =
       match.confidence >= MATCH_TRUST_THRESHOLD && match.property?.priceActual != null;
     if (match.property) stats.matched++;
     if (match.property && !priceConfident) stats.lowConf++;
 
-    const routeChannel =
-      match.property?.channel ?? (e.mailbox === "lettings" ? "lettings" : "sales");
     const route = routeEnquiry({
-      channel: routeChannel,
+      channel: enquiryChannel,
       intent: classification.intent,
       price: match.property?.priceActual ?? null,
       priceConfident,

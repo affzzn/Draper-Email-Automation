@@ -56,17 +56,20 @@ export async function processMessage(
 
   // Match the enquiry to our own listing (§5.1) so price/beds/type land on the record
   // for alternatives, the £2m routing, and naming the property type in the reply.
-  const match = await matchPropertyForEnquiry(parsed);
+  // Scope the match to the inbox's channel so a sales enquiry can't match a lettings
+  // listing (and vice versa).
+  const enquiryChannel: "sales" | "lettings" =
+    mailbox === "lettings" ? "lettings" : "sales";
+  const match = await matchPropertyForEnquiry(parsed, enquiryChannel);
   const priceConfident =
     match.confidence >= MATCH_TRUST_THRESHOLD && match.property?.priceActual != null;
 
-  // Route the enquiry to an owner (§3), configured for w/c 17 Aug. Uses the matched
-  // price for the £2m split; unknown/low-confidence price falls back to Craig.
-  const routeChannel =
-    match.property?.channel ?? (mailbox === "lettings" ? "lettings" : "sales");
+  // Route the enquiry to an owner (§3), configured for w/c 17 Aug. Channel comes from
+  // the inbox (reliable), price from the confident match for the £2m split; an
+  // unknown/low-confidence price falls back to Craig.
   const isAvailable = await availabilityMap();
   const route = routeEnquiry({
-    channel: routeChannel,
+    channel: enquiryChannel,
     intent: classification.intent,
     price: match.property?.priceActual ?? null,
     priceConfident,

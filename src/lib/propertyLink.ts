@@ -20,8 +20,13 @@ function norm(s: string): string {
 // is worse than none under live sending, so ambiguous street hits get a low confidence
 // and callers can treat anything below their threshold as "no match".
 export async function matchPropertyForEnquiry(
-  enquiry: ParsedEnquiry
+  enquiry: ParsedEnquiry,
+  channel?: "sales" | "lettings"
 ): Promise<PropertyMatch> {
+  // Match only within the enquiry's own channel so a sales enquiry never matches a
+  // lettings listing on the same street (which would mis-route and mis-price it).
+  const channelWhere = channel ? { channel } : {};
+
   // 1. Reference token, e.g. Rightmove "83517_DRL260039" -> "DRL260039".
   if (enquiry.propertyReference) {
     const ref = enquiry.propertyReference.toUpperCase();
@@ -29,7 +34,7 @@ export async function matchPropertyForEnquiry(
       new Set([ref, ...(ref.match(/[A-Z]{2,4}\d{5,}/g) ?? [])])
     );
     const byRef = await prisma.property.findFirst({
-      where: { reference: { in: tokens } },
+      where: { reference: { in: tokens }, ...channelWhere },
     });
     if (byRef) return { property: byRef, confidence: 0.98, method: "reference" };
   }
@@ -44,7 +49,7 @@ export async function matchPropertyForEnquiry(
   // 2. Exact full postcode, when it uniquely identifies a listing.
   if (fullPostcode && pcMatch) {
     const byPc = (
-      await prisma.property.findMany({ where: { outcode: pcMatch[1] } })
+      await prisma.property.findMany({ where: { outcode: pcMatch[1], ...channelWhere } })
     ).filter(
       (p) => (p.postcode ?? "").toUpperCase().replace(/\s+/g, "") === fullPostcode
     );
@@ -56,7 +61,7 @@ export async function matchPropertyForEnquiry(
 
   // 3. Street name appearing within the enquiry address, scoped to the outcode.
   if (outcode) {
-    const inOutcode = await prisma.property.findMany({ where: { outcode } });
+    const inOutcode = await prisma.property.findMany({ where: { outcode, ...channelWhere } });
     const na = norm(addr);
     const hits = inOutcode
       .map((p) => ({ p, street: norm(p.addressStreet ?? "") }))
@@ -86,9 +91,10 @@ export async function matchPropertyForEnquiry(
 
 // Back-compat: just the property (used by the reply generator's fallback path).
 export async function resolvePropertyForEnquiry(
-  enquiry: ParsedEnquiry
+  enquiry: ParsedEnquiry,
+  channel?: "sales" | "lettings"
 ): Promise<Property | null> {
-  return (await matchPropertyForEnquiry(enquiry)).property;
+  return (await matchPropertyForEnquiry(enquiry, channel)).property;
 }
 
 // Turn "House - Detached" / "Flat Apartment" into a plain word: house / flat.

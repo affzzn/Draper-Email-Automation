@@ -218,7 +218,10 @@ export async function generateReply(params: {
   const property =
     params.property !== undefined
       ? params.property
-      : await resolvePropertyForEnquiry(parsed);
+      : await resolvePropertyForEnquiry(
+          parsed,
+          mailbox === "lettings" ? "lettings" : "sales"
+        );
   const propertyShort = propertyShortForm(property);
   const availability = availabilityLabel(property);
   const channel = channelFor(property, mailbox);
