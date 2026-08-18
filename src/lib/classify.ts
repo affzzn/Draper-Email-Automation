@@ -7,6 +7,7 @@ export interface Classification {
   intent: Intent;
   confidence: number;
   factualQuestion: string | null; // the question they asked, for the follow-up call
+  proposedTime: string | null; // a day/time they proposed for a viewing (Rule 4.6), or null
   raw: unknown; // stored for calibration (spec §6.5)
 }
 
@@ -30,7 +31,11 @@ function heuristic(parsed: ParsedEnquiry, subject: string): Classification {
   const structuredViewing =
     (parsed.source === "rightmove" || parsed.source === "zoopla") &&
     (!!parsed.propertyAddress || !!parsed.propertyReference);
-  const base = { factualQuestion: null as string | null, raw: { heuristic: true } };
+  const base = {
+    factualQuestion: null as string | null,
+    proposedTime: null as string | null,
+    raw: { heuristic: true },
+  };
 
   if (/valuation|value my|what.?s my (home|property) worth/.test(hay))
     return { intent: "valuation_request", confidence: 0.62, ...base };
@@ -79,6 +84,7 @@ export async function classify(
       confidence?: number;
       reasoning?: string;
       factualQuestion?: string | null;
+      proposedTime?: string | null;
     };
 
     const intent = VALID_INTENTS.includes(parsedOut.intent as Intent)
@@ -88,12 +94,14 @@ export async function classify(
       typeof parsedOut.confidence === "number" ? parsedOut.confidence : fallback.confidence;
     confidence = Math.max(0, Math.min(1, confidence));
 
-    const fq =
-      typeof parsedOut.factualQuestion === "string" && parsedOut.factualQuestion.trim()
-        ? parsedOut.factualQuestion.trim()
+    const clean = (v: unknown): string | null =>
+      typeof v === "string" && v.trim() && v.trim().toLowerCase() !== "null"
+        ? v.trim()
         : null;
+    const fq = clean(parsedOut.factualQuestion);
+    const proposedTime = clean(parsedOut.proposedTime);
 
-    return { intent, confidence, factualQuestion: fq, raw: parsedOut };
+    return { intent, confidence, factualQuestion: fq, proposedTime, raw: parsedOut };
   } catch {
     return fallback;
   }

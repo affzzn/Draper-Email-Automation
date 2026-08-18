@@ -111,13 +111,6 @@ function channelFor(property: Property | null, mailbox: Mailbox): Channel {
   return mailbox === "lettings" ? "lettings" : "sales";
 }
 
-// A proposed viewing day/time to acknowledge (Rule 4.6 / Rule 16).
-const PROPOSED_TIME_RE =
-  /\b(mon|tues|wednes|thurs|fri|satur|sun)day\b|\btoday\b|\btomorrow\b|\bthis (week|weekend|morning|afternoon|evening)\b|\bnext week\b|\b\d{1,2}(:\d{2})?\s?(a\.?m\.?|p\.?m\.?)\b|\baround (noon|midday|\d)/i;
-function proposesTime(message: string | null): boolean {
-  return PROPOSED_TIME_RE.test(message ?? "");
-}
-
 // Shape selection happens in code (not the model). First match wins: E, D, B, C, A.
 // v5 adds E, the valuation reply. It is first because a valuation request has no
 // property of ours behind it, so availability and factual-question tests are moot.
@@ -125,6 +118,7 @@ function selectShape(
   intent: string,
   availability: string,
   factualQuestion: string | null,
+  proposedTime: string | null,
   message: string | null
 ): "A" | "B" | "C" | "D" | "E" {
   if (intent === "valuation_request") return "E";
@@ -143,9 +137,9 @@ function selectShape(
     /\brelocat|moving (from|over|to)|move[- ]?in|move date|first[- ]?time buyer|buying with|my (partner|husband|wife|family)|current lease|lease ends|corporate let|embassy|student|starting (work|a job)/i.test(
       msg
     );
-  // A proposed viewing day/time is concrete detail to acknowledge (Rule 16), not a bare
-  // enquiry — route to Shape C so the reply names it instead of a generic "when suits".
-  if (hasContext || proposesTime(msg)) return "C";
+  // A proposed viewing day/time (extracted by the classifier, so any phrasing is caught)
+  // is concrete detail to acknowledge (Rule 16) — route to Shape C so the reply names it.
+  if (hasContext || proposedTime) return "C";
   return "A";
 }
 
@@ -246,6 +240,7 @@ export async function generateReply(params: {
     classification.intent,
     availability,
     classification.factualQuestion,
+    classification.proposedTime,
     parsed.messageBody
   );
 
@@ -286,10 +281,10 @@ export async function generateReply(params: {
   const propBeds = property?.bedrooms != null ? String(property.bedrooms) : "";
   const propType = typeWord(property?.propertyType) ?? "property";
 
-  // Strong per-enquiry directive to name a proposed day/time (the model ignored it
-  // ~half the time otherwise). Empty when no time was proposed.
-  const proposedTimeNote = proposesTime(parsed.messageBody)
-    ? "The applicant proposed a specific day or time. You MUST name it back to them explicitly (for example \"You mentioned Wednesday around midday\") and then ask what time within it would suit. Never reply with a generic \"when would suit\" when a day or time was given."
+  // Strong per-enquiry directive to name the proposed day/time back (the classifier
+  // extracts it, so any phrasing is caught). Empty when none was proposed.
+  const proposedTimeNote = classification.proposedTime
+    ? `The applicant proposed this for the viewing: "${classification.proposedTime}". You MUST acknowledge it by naming it back to them, then ask what exact time within it would suit. Never reply with a generic "when would suit" when a day or time was given.`
     : "";
   // Never engage with a "property to sell" / valuation signal on a viewing enquiry
   // (Craig: do not offer a valuation to an applicant). Drop it from the context.
