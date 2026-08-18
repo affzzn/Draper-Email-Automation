@@ -93,18 +93,17 @@ export async function processMessage(
     currentEnquiryId: enquiry.id,
   });
 
-  // Generate the body that WOULD be sent — eligible, unsuppressed, and never for
-  // hello@ (spec §2/§7.2). We deliberately do NOT skip merely because the same
-  // applicant emailed before: a same-person, same-PROPERTY repeat is already caught
-  // as a `repeat_enquiry` suppression (spec §9.6), so it is handled by `!suppressed`.
-  // A same-person, DIFFERENT-property enquiry is a genuine new lead and must still be
-  // drafted (it just opens as a repeat via isRepeat below, for tone).
+  // Generate the body that WOULD be sent — eligible and unsuppressed. Mailbox scope
+  // (v5 §7.3: hello@ is valuation-only) is now enforced by the eligibility allow-list
+  // in decide(), so no hello@ special-case is needed here; a hello@ viewing_request is
+  // already ineligible, a hello@ valuation_request is eligible. We also do NOT skip
+  // merely because the same applicant emailed before: a same-person, same-PROPERTY
+  // repeat is already a `repeat_enquiry` suppression (§9.6), handled by `!suppressed`;
+  // a different-property repeat is a genuine new lead and must still be drafted (it
+  // opens as a repeat via isRepeat below, for tone).
   let generatedBody: string | null = null;
   let generationMetadata: object | null = null;
-  const shouldGenerate =
-    decision.eligible &&
-    !decision.suppressed &&
-    mailbox !== "hello";
+  const shouldGenerate = decision.eligible && !decision.suppressed;
 
   if (shouldGenerate) {
     const reply = await generateReply({

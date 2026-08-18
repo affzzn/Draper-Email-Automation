@@ -20,6 +20,27 @@ export interface DecisionResult {
 
 const CONFIDENCE_THRESHOLD = generationConfig.confidenceThreshold ?? 0.85;
 
+// v5: eligibility is an explicit allow-list. valuation_request joins viewing_request
+// (Craig, 14 Aug). hello@ is eligible for valuation requests only.
+const ELIGIBLE_INTENTS = new Set<string>(
+  generationConfig.eligibility?.eligibleIntents ?? ["viewing_request"]
+);
+const ELIGIBLE_BY_MAILBOX: Record<string, string[]> =
+  generationConfig.eligibility?.eligibleIntentsByMailbox ?? {};
+// Cast: the JSON carries a "_note" string alongside the booleans; we only ever index
+// this by intent (never "_note"), so a mixed-value cast is safe.
+const PROPERTY_REQUIRED_FOR = (generationConfig.eligibility?.propertyRequiredFor ?? {
+  viewing_request: true,
+}) as unknown as Record<string, boolean>;
+
+// sales@ / lettings@ / hello@ -> the config key.
+function mailboxKeyFor(address: string): string {
+  const local = (address ?? "").toLowerCase().split("@")[0];
+  if (local.startsWith("letting")) return "lettings";
+  if (local.startsWith("hello")) return "hello";
+  return "sales";
+}
+
 // Intents that must NEVER receive an automated reply, at any confidence (spec §9.2).
 // (Eligibility is already allow-list, but this makes the rule explicit and safe as
 // new eligible intents like valuation_request are added.)
@@ -107,14 +128,18 @@ function sameProperty(
 // Two independent eligibility gates (spec §6.5). Both must pass.
 function evaluateEligibility(
   parsed: ParsedEnquiry,
-  cls: Classification
+  cls: Classification,
+  mailboxKey: string
 ): { eligible: boolean; reason: string | null } {
   const reasons: string[] = [];
+  const allowedHere = ELIGIBLE_BY_MAILBOX[mailboxKey];
 
   if (HARD_EXCLUDED_INTENTS.has(cls.intent)) {
     reasons.push(`intent ${cls.intent} is hard-excluded from any automated reply`);
-  } else if (cls.intent !== "viewing_request") {
-    reasons.push(`intent is ${cls.intent}, not viewing_request`);
+  } else if (!ELIGIBLE_INTENTS.has(cls.intent)) {
+    reasons.push(`intent is ${cls.intent}, which is not an eligible intent`);
+  } else if (allowedHere && !allowedHere.includes(cls.intent)) {
+    reasons.push(`intent ${cls.intent} is not eligible in the ${mailboxKey} inbox`);
   } else if (cls.confidence < CONFIDENCE_THRESHOLD) {
     reasons.push(
       `confidence ${cls.confidence.toFixed(2)} below threshold ${CONFIDENCE_THRESHOLD}`
@@ -125,7 +150,11 @@ function evaluateEligibility(
     !!parsed.applicantEmail && !isNoReply(parsed.applicantEmail);
   const hasProperty = !!parsed.propertyReference || !!parsed.propertyAddress;
   if (!hasRealEmail) reasons.push("no resolved real applicant email");
-  if (!hasProperty) reasons.push("no property reference or address");
+
+  // v5: a valuation request names the SENDER'S property, not one of ours, so the
+  // property gate must not apply to it. Applying it made every valuation ineligible.
+  const needsProperty = PROPERTY_REQUIRED_FOR[cls.intent] !== false;
+  if (!hasProperty && needsProperty) reasons.push("no property reference or address");
 
   return {
     eligible: reasons.length === 0,
@@ -157,7 +186,7 @@ export async function decide(params: {
 
   // hello@ is ingested and classified but NEVER generates a reply (spec §2, §7.2).
   // Eligibility gates first.
-  const elig = evaluateEligibility(parsed, classification);
+  const elig = evaluateEligibility(parsed, classification, mailboxKeyFor(mailboxAddress));
   base.eligible = elig.eligible;
   base.ineligibleReason = elig.reason;
 

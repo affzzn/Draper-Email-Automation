@@ -124,7 +124,9 @@ function postcodeKey(addr: string | null | undefined): string | null {
   return m ? `${m[1]}${m[2]}` : null;
 }
 
-export async function comparableForEnquiry(opts: {
+// v5: returns up to `limit` comparables (Craig asked for "a selection of two or
+// three others"). comparableForEnquiry is kept below as a single-result wrapper.
+export async function comparablesForEnquiry(opts: {
   channel: Channel;
   seedPrice: number; // enquired property price, or stated budget
   seedBeds: number | null; // enquired property beds, or stated requirement
@@ -134,7 +136,8 @@ export async function comparableForEnquiry(opts: {
   excludePropertyId?: string | null;
   excludeRef?: string | null;
   excludeAddress?: string | null;
-}): Promise<ScoredProperty | null> {
+  limit?: number; // default 2, hard max from alternativesPolicy.maxPerReply
+}): Promise<ScoredProperty[]> {
   const area = opts.seedOutcode.replace(/\d.*$/, ""); // "NW6" -> "NW"
   // Comparable band: 10% above or below the enquired price (Craig, 14 Aug call).
   const priceLo = Math.round(opts.seedPrice * 0.9);
@@ -185,7 +188,15 @@ export async function comparableForEnquiry(opts: {
   }
 
   scored.sort((a, b) => b.score - a.score);
-  return scored[0] ?? null;
+  return scored.slice(0, Math.max(1, Math.min(opts.limit ?? 2, 3)));
+}
+
+// Back-compat: a single best comparable.
+export async function comparableForEnquiry(
+  opts: Parameters<typeof comparablesForEnquiry>[0]
+): Promise<ScoredProperty | null> {
+  const out = await comparablesForEnquiry({ ...opts, limit: 1 });
+  return out[0] ?? null;
 }
 
 // Convenience: given one of our own properties (by reference), find its neighbours.
