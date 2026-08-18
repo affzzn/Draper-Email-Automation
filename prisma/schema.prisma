@@ -61,6 +61,7 @@ enum SuppressionReason {
   human_replied_first
   ineligible_intent
   repeat_enquiry
+  excluded_keyword
 }
 
 // One row per inbound message. Idempotent on graphMessageId (spec §5).

@@ -3,6 +3,7 @@ import { prisma } from "../src/lib/prisma";
 import { GraphTransport } from "../src/lib/transport";
 import { isAllowlisted, sendMode, maxSendAgeMinutes } from "../src/lib/allowlist";
 import { mailboxByRole } from "../src/lib/mailboxes";
+import { isNoReply } from "../src/lib/parse";
 
 // Sender worker — the ONLY place a real reply is sent. Deliberately does NOT call
 // assertShadowMode (that guards the drafting path). Sending is gated by four
@@ -73,6 +74,18 @@ async function main() {
       console.log(
         `  ⏳ stale ${e.mailbox}/${e.id} — due ${d.wouldSendAtImmediate?.toISOString()} is ${Math.round(ageMin)}min old (> ${maxAgeMin}min), not sending`
       );
+      continue;
+    }
+
+    // Gate: never send to a portal relay or no-reply address (spec §2.3). Under live
+    // sending a wrong resolution would bounce or reply into a Rightmove relay thread.
+    if (!to || isNoReply(to)) {
+      await prisma.decision.update({
+        where: { id: d.id },
+        data: { sendStatus: "blocked" },
+      });
+      blocked++;
+      console.log(`  ⛔ blocked ${e.mailbox}/${e.id} — ${to ?? "(no email)"} is a relay/no-reply address`);
       continue;
     }
 

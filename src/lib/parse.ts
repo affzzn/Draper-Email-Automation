@@ -101,6 +101,44 @@ function firstUrlIn(text: string): string | null {
   return m ? m[0] : null;
 }
 
+// Tokens that mean a candidate is not a usable personal name.
+const NAME_STOPWORDS = new Set([
+  "and", "or", "the", "from", "of", "&",
+  "team", "enquiries", "enquiry", "sales", "lettings", "info", "admin", "office",
+  // Portal/brand sender names are never a person — reject so we drop to no name.
+  "rightmove", "zoopla", "onthemarket", "noreply", "no-reply", "donotreply",
+]);
+
+// Return the raw string only if it looks like a real personal name. Rejects
+// emails, ids, sentences, and dangling fragments such as "Viola And" so the reply
+// falls back to "Dear Sir or Madam" rather than guessing (spec item 5.4).
+function cleanName(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const s = raw
+    .trim()
+    .replace(/^(dear|hi|hello)\s+/i, "")
+    .replace(/[,.;:!]+$/, "")
+    .trim();
+  if (!s || s.length < 2 || s.length > 40) return null;
+  if (/[@\d]/.test(s)) return null; // emails, phone fragments, listing ids
+  const tokens = s.split(/\s+/);
+  if (tokens.length > 4) return null; // a sentence, not a name
+  if (tokens.some((t) => NAME_STOPWORDS.has(t.toLowerCase()))) return null;
+  // Each token must be alphabetic; allow hyphen/apostrophe (O'Brien, Anne-Marie).
+  if (!tokens.every((t) => /^[a-z][a-z'’-]*$/i.test(t))) return null;
+  return s;
+}
+
+// How the applicant signed the body, e.g. the line after "Kind regards,".
+function signedNameFrom(text: string): string | null {
+  const m = text.match(
+    /\b(?:kind regards|best regards|warm regards|many thanks|best wishes|kind wishes|yours sincerely|yours faithfully|sincerely|regards|thanks|thank you|cheers|all the best|best)\b[,.!]?\s*\n+\s*([^\n]{2,40})/i
+  );
+  if (!m) return null;
+  const line = m[1].trim().replace(/^[-–—•*]+\s*/, "");
+  return line || null;
+}
+
 export function parseMessage(msg: GraphMessage): ParsedEnquiry {
   const notes: string[] = [];
   const subject = msg.subject ?? "";
@@ -143,10 +181,24 @@ export function parseMessage(msg: GraphMessage): ParsedEnquiry {
     }
   }
 
+  // Prefer how they actually signed the body, then the labelled field, then the
+  // From display name. Reject malformed candidates (spec item 5.4).
+  const signedName = signedNameFrom(text);
+  const labelledName = grabLabelled(text, [
+    "Name",
+    "Applicant name",
+    "Contact name",
+    "Full name",
+  ]);
+  const headerName = msg.from?.emailAddress?.name ?? null;
   const applicantName =
-    grabLabelled(text, ["Name", "Applicant name", "Contact name", "Full name"]) ??
-    msg.from?.emailAddress?.name ??
+    cleanName(signedName) ??
+    cleanName(labelledName) ??
+    cleanName(headerName) ??
     null;
+  if (!applicantName && (signedName || labelledName || headerName)) {
+    notes.push("name: candidate rejected as malformed, using no name");
+  }
 
   const applicantPhone = grabLabelled(text, [
     "Phone",
@@ -174,8 +226,10 @@ export function parseMessage(msg: GraphMessage): ParsedEnquiry {
   // Rightmove subject format, e.g. "Sales enquiry: Oberman Road - Tenant from SW8".
   // A fixed template, so recover the property from the subject when the body has none.
   if (!propertyAddress) {
+    // Separator may be a hyphen, en dash or em dash; role may be buyer/tenant/
+    // landlord/applicant. This was silently discarding a block of good leads.
     const sm = subject.match(
-      /(?:sales|lettings)\s+enquiry:\s*(.+?)\s*-\s*(?:buyer|tenant)\s+from\b/i
+      /enquiry:\s*(.+?)\s*[-–—]\s*(?:buyer|tenant|landlord|applicant)\b/i
     );
     if (sm && sm[1] && sm[1].trim()) {
       propertyAddress = sm[1].trim();

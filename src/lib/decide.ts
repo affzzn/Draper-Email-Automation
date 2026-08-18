@@ -20,6 +20,38 @@ export interface DecisionResult {
 
 const CONFIDENCE_THRESHOLD = generationConfig.confidenceThreshold ?? 0.85;
 
+// Intents that must NEVER receive an automated reply, at any confidence (spec §9.2).
+// (Eligibility is already allow-list, but this makes the rule explicit and safe as
+// new eligible intents like valuation_request are added.)
+const HARD_EXCLUDED_INTENTS = new Set([
+  "tenant_or_maintenance",
+  "supplier",
+  "recruitment",
+  "press",
+  "spam",
+]);
+
+// Keyword override on top of intent: these go to a human regardless of classification.
+const HARD_BLOCK_KEYWORDS = [
+  "complaint",
+  "solicitor",
+  "legal",
+  "deposit dispute",
+  "tenancy deposit",
+  "ombudsman",
+  "dispute resolution",
+  "redress scheme",
+  "tribunal",
+  "court order",
+];
+
+function hardKeywordHit(msg: GraphMessage, parsed: ParsedEnquiry): string | null {
+  const hay = `${msg.subject ?? ""} ${parsed.messageBody ?? ""} ${
+    msg.bodyPreview ?? ""
+  }`.toLowerCase();
+  return HARD_BLOCK_KEYWORDS.find((k) => hay.includes(k)) ?? null;
+}
+
 function header(msg: GraphMessage, name: string): string | null {
   const h = msg.internetMessageHeaders?.find(
     (x) => x.name.toLowerCase() === name.toLowerCase()
@@ -79,7 +111,9 @@ function evaluateEligibility(
 ): { eligible: boolean; reason: string | null } {
   const reasons: string[] = [];
 
-  if (cls.intent !== "viewing_request") {
+  if (HARD_EXCLUDED_INTENTS.has(cls.intent)) {
+    reasons.push(`intent ${cls.intent} is hard-excluded from any automated reply`);
+  } else if (cls.intent !== "viewing_request") {
     reasons.push(`intent is ${cls.intent}, not viewing_request`);
   } else if (cls.confidence < CONFIDENCE_THRESHOLD) {
     reasons.push(
@@ -126,6 +160,19 @@ export async function decide(params: {
   const elig = evaluateEligibility(parsed, classification);
   base.eligible = elig.eligible;
   base.ineligibleReason = elig.reason;
+
+  // Hard keyword block (spec §9.2): a legal/complaint keyword sends this to a human
+  // regardless of intent or confidence. Takes precedence over other labels.
+  const kw = hardKeywordHit(msg, parsed);
+  if (kw) {
+    base.eligible = false;
+    base.ineligibleReason = base.ineligibleReason
+      ? `${base.ineligibleReason}; hard-excluded keyword: ${kw}`
+      : `hard-excluded keyword: ${kw}`;
+    base.suppressed = true;
+    base.suppressionReason = "excluded_keyword";
+    return base;
+  }
 
   // ── Suppression (recorded, not enforced) ───────────────────────────────────
   if (isAutomatedBulk(msg, parsed)) {
