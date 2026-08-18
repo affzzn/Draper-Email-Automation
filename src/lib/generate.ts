@@ -32,8 +32,10 @@ const HARD = generationConfig.wordLimitHard ?? 90;
 // follows whoever the enquiry was routed to (Craig, 14 Aug call). {{SIGNATURE}}
 // therefore expands to that name plus the inbox's own signature block.
 function signatureFor(mailbox: Mailbox, signOffName?: string | null): string {
-  const raw = signatures[mailbox] ?? signatures.sales;
+  const raw = (signatures[mailbox] ?? signatures.sales ?? "").trim();
   const name = (signOffName ?? "").trim() || SIGNOFF_NAME_FALLBACK;
+  // No inbox block configured (current default) -> just the name, nothing else.
+  if (!raw) return name;
   return `${name}<br>${raw.replace(/\n/g, "<br>")}`;
 }
 
