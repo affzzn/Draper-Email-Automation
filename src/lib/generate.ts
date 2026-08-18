@@ -213,7 +213,11 @@ export async function generateReply(params: {
   property?: Property | null;
 }): Promise<GeneratedReply> {
   const { parsed, mailbox, classification } = params;
-  const firstName = parsed.applicantName ? parsed.applicantName.split(/\s+/)[0] : null;
+  // First name for the greeting. Strip stray edge punctuation so "Ji- Chiu" greets as
+  // "Dear Ji," not "Dear Ji-," (keeps internal hyphen/apostrophe: Anne-Marie, O'Brien).
+  const rawFirst = parsed.applicantName ? parsed.applicantName.split(/\s+/)[0] : null;
+  const cleanedFirst = rawFirst ? rawFirst.replace(/^[-'’.]+|[-'’.]+$/g, "").trim() : "";
+  const firstName = cleanedFirst || null;
 
   const property =
     params.property !== undefined
