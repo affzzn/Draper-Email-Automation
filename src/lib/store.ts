@@ -8,6 +8,21 @@ import { dataMode, isReadOnly } from "./mode";
 
 export { isReadOnly };
 
+// Next-week roster fallback if the TeamMember table is unseeded / snapshot mode.
+const DEFAULT_TEAM = [
+  { name: "Craig", available: true },
+  { name: "Olivia", available: true },
+  { name: "Aaron", available: true },
+  { name: "Mitchell", available: false },
+];
+
+export async function getTeam(): Promise<{ name: string; available: boolean }[]> {
+  if (dataMode() === "snapshot") return DEFAULT_TEAM;
+  const { prisma } = await import("./prisma");
+  const rows = await prisma.teamMember.findMany({ orderBy: { name: "asc" } });
+  return rows.length ? rows.map((r) => ({ name: r.name, available: r.available })) : DEFAULT_TEAM;
+}
+
 export interface DecisionRow {
   eligible: boolean;
   ineligibleReason: string | null;
@@ -54,6 +69,8 @@ export interface EnquiryRow {
   matchedType: string | null;
   matchConfidence: number | null;
   matchMethod: string | null;
+  routedTo: string | null;
+  routedReason: string | null;
   rawSubject: string;
   rawBodyText: string;
   rawBodyHtml: string;
@@ -151,6 +168,8 @@ export async function getEnquiryRows(): Promise<EnquiryRow[]> {
     matchedType: e.matchedType,
     matchConfidence: e.matchConfidence,
     matchMethod: e.matchMethod,
+    routedTo: e.routedTo,
+    routedReason: e.routedReason,
     rawSubject: e.rawSubject,
     rawBodyText: e.rawBodyText,
     rawBodyHtml: e.rawBodyHtml,

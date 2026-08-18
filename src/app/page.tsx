@@ -1,7 +1,8 @@
 import GradeControls from "./components/GradeControls";
 import RawViewer from "./components/RawViewer";
 import AssignControls from "./components/AssignControls";
-import { getEnquiryRows, isReadOnly } from "@/lib/store";
+import TeamToggles from "./components/TeamToggles";
+import { getEnquiryRows, getTeam, isReadOnly } from "@/lib/store";
 import { defaultAssignee } from "@/lib/assignees";
 
 export const dynamic = "force-dynamic";
@@ -55,6 +56,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<SP>
   const sp = await searchParams;
   const review = sp.review === "1" || sp.review === "true";
   const all = await getEnquiryRows();
+  const team = await getTeam();
 
   const filtered = all.filter((e) => {
     if (sp.mailbox && e.mailbox !== sp.mailbox) return false;
@@ -80,6 +82,8 @@ export default async function Page({ searchParams }: { searchParams: Promise<SP>
         <div className="stat"><div className="n">{viewingCount}</div><div className="l">Viewing requests</div></div>
         <div className="stat"><div className="n">{draftCount}</div><div className="l">Replies drafted</div></div>
       </div>
+
+      <TeamToggles members={team} readOnly={readOnly} />
 
       <form className="controls" method="get">
         {review && <input type="hidden" name="review" value="1" />}
@@ -182,10 +186,13 @@ export default async function Page({ searchParams }: { searchParams: Promise<SP>
                     <td>
                       <AssignControls
                         enquiryId={e.id}
-                        current={e.assignedTo ?? defaultAssignee(e.mailbox)}
+                        current={e.assignedTo ?? e.routedTo ?? defaultAssignee(e.mailbox)}
                         isDefault={!e.assignedTo}
                         readOnly={readOnly}
                       />
+                      {!e.assignedTo && e.routedReason && (
+                        <div className="small" style={{ color: "#7a7067", marginTop: 2 }}>{e.routedReason}</div>
+                      )}
                     </td>
                     <td>
                       {e.decision?.generatedBody ? (

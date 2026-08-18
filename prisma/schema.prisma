@@ -125,6 +125,11 @@ model Enquiry {
   matchConfidence   Float?
   matchMethod       String? // reference | postcode | street_outcode | none
 
+  // Automated routing (§3). Who the engine allocated this enquiry to, and why.
+  // Craig's manual override lives in `assignedTo` above and always wins.
+  routedTo     String?
+  routedReason String?
+
   decision Decision?
 
   createdAt DateTime @default(now())
@@ -192,6 +197,14 @@ model Subscription {
 model DeltaState {
   mailbox   Mailbox  @id
   deltaLink String
+  updatedAt DateTime @updatedAt
+}
+
+// Per-person in/out availability for routing (§3.5). A manual toggle now; the
+// availability check is a single function so it can later read a calendar instead.
+model TeamMember {
+  name      String   @id
+  available Boolean  @default(true)
   updatedAt DateTime @updatedAt
 }
 

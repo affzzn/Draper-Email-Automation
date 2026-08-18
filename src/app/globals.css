@@ -218,3 +218,11 @@ td.null, .null { color: var(--faint); }
 .assign-tag { font-size: 10px; color: var(--faint); text-transform: uppercase; letter-spacing: 0.04em; }
 
 .empty { padding: 28px; text-align: center; color: var(--faint); font-size: 13px; }
+
+/* Team in/out toggles (§3.5) */
+.team-toggles { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 4px 0 14px; }
+.team-toggles .team-label { font-size: 12px; letter-spacing: .04em; text-transform: uppercase; color: #7a7067; margin-right: 4px; }
+.team-chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; font-size: 13px; border: 1px solid #e5ddd3; background: #fff; cursor: pointer; user-select: none; }
+.team-chip.in { color: #2e7d32; border-color: #cfe6cf; }
+.team-chip.out { color: #b3261e; border-color: #f0d2cf; background: #fbf3f2; }
+.team-chip .team-state { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; opacity: .8; }

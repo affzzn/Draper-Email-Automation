@@ -9,9 +9,10 @@ import { defaultTransport } from "./transport";
 import { defaultAssignmentSink } from "./assignment";
 import { mailboxByRole } from "./mailboxes";
 import { matchPropertyForEnquiry, typeWord } from "./propertyLink";
+import { routeEnquiry, availabilityMap } from "./routing";
 
 // Below this confidence a property match is recorded (and shown) but NOT trusted to
-// drive the reply — a wrong price/type is worse than none (spec §5.1).
+// drive the reply or the £2m routing — a wrong price/type is worse than none (§5.1).
 const MATCH_TRUST_THRESHOLD = 0.75;
 
 // Process one Graph message end-to-end. Idempotent on graphMessageId (spec §5).
@@ -56,6 +57,21 @@ export async function processMessage(
   // Match the enquiry to our own listing (§5.1) so price/beds/type land on the record
   // for alternatives, the £2m routing, and naming the property type in the reply.
   const match = await matchPropertyForEnquiry(parsed);
+  const priceConfident =
+    match.confidence >= MATCH_TRUST_THRESHOLD && match.property?.priceActual != null;
+
+  // Route the enquiry to an owner (§3), configured for w/c 17 Aug. Uses the matched
+  // price for the £2m split; unknown/low-confidence price falls back to Craig.
+  const routeChannel =
+    match.property?.channel ?? (mailbox === "lettings" ? "lettings" : "sales");
+  const isAvailable = await availabilityMap();
+  const route = routeEnquiry({
+    channel: routeChannel,
+    intent: classification.intent,
+    price: match.property?.priceActual ?? null,
+    priceConfident,
+    isAvailable,
+  });
 
   // Persist the enquiry first so decide() can run dedupe / thread lookups against it.
   const enquiry = await prisma.enquiry.create({
@@ -95,6 +111,8 @@ export async function processMessage(
       matchedType: typeWord(match.property?.propertyType) ?? null,
       matchConfidence: match.confidence,
       matchMethod: match.method,
+      routedTo: route.owner,
+      routedReason: route.reason,
     },
   });
 
@@ -129,6 +147,8 @@ export async function processMessage(
       // Only let a confident match drive the reply; a weak one is shown but not trusted.
       property:
         match.confidence >= MATCH_TRUST_THRESHOLD ? match.property : null,
+      // §3.8: the reply signs off as the routed owner (no manual override at draft time).
+      signOffName: route.owner,
     });
     generatedBody = reply.body;
     generationMetadata = reply.metadata;
