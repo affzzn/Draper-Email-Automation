@@ -62,7 +62,7 @@ enum SuppressionReason {
   ineligible_intent
   repeat_enquiry
   excluded_keyword
-  internal_domain
+  internal_domain // retired: no code sets this now (a genuine staff enquiry should get a reply; a non-enquiry fails the confidence gate). Kept to match the applied migration; Postgres enum values can't be safely dropped.
 }
 
 // One row per inbound message. Idempotent on graphMessageId (spec §5).

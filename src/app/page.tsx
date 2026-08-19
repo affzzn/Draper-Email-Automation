@@ -42,7 +42,6 @@ function statusOf(e: Row): { label: string; tone: string } {
   if (sr === "one_reply_per_thread") return { label: "Already replied", tone: "mute" };
   if (sr === "repeat_enquiry") return { label: "Awaiting a call", tone: "amber" };
   if (sr === "auto_responder_guard") return { label: "Automated sender", tone: "mute" };
-  if (sr === "internal_domain") return { label: "Internal (suppressed)", tone: "mute" };
   if (sr === "excluded_keyword") return { label: "Sent to a person", tone: "amber" };
   if (["valuation_request", "landlord_enquiry", "tenant_or_maintenance"].includes(e.intent ?? ""))
     return { label: "Needs a person", tone: "mute" };
