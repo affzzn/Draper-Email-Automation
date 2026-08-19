@@ -1,6 +1,7 @@
 import type { Intent } from "@prisma/client";
 import { complete, anthropic } from "./anthropic";
 import type { ParsedEnquiry } from "./parse";
+import { isNoReply } from "./parse";
 import generationConfig from "../../config/generation.json";
 
 export interface Classification {
@@ -50,8 +51,11 @@ function heuristic(parsed: ParsedEnquiry, subject: string): Classification {
   if (/unsubscribe|viagra|crypto|\bseo\b/.test(hay))
     return { intent: "spam", confidence: 0.72, ...base };
 
+  // A structured portal viewing enquiry is genuinely high-intent even with no prose, so
+  // it must clear the 0.80 gate (it was 0.74, which made every fallback on a portal lead
+  // ineligible — the single most common enquiry we get). §v5.5.
   if (structuredViewing)
-    return { intent: "viewing_request", confidence: 0.74, ...base };
+    return { intent: "viewing_request", confidence: 0.82, ...base };
 
   if (/view|viewing|arrange|interested in|enquir/.test(hay))
     return { intent: "viewing_request", confidence: 0.58, ...base };
@@ -77,6 +81,39 @@ const clean = (v: unknown): string | null =>
   typeof v === "string" && v.trim() && v.trim().toLowerCase() !== "null"
     ? v.trim()
     : null;
+
+// Portal-envelope override (§v5.5). A bare portal lead on one of OUR listings is a
+// viewing_request by construction: the portal already states the intent, the applicant
+// simply pressed the button and typed nothing. We must not let the LLM's (correctly) low
+// score on an empty message gate it. Fires ONLY when all five hold — the empty-text
+// condition is what stops it ever swallowing a complaint or a maintenance report that
+// happens to arrive on a portal template. Applied in the pipeline after property matching.
+export function isBarePortalViewing(opts: {
+  source: string;
+  subject: string;
+  rawText: string;
+  messageBody: string | null;
+  applicantEmail: string | null;
+  matchedOurListing: boolean; // property match confidence >= trust threshold
+}): boolean {
+  const portalSource =
+    opts.source === "rightmove" || opts.source === "zoopla" || opts.source === "website";
+  if (!portalSource) return false;
+  // 1. The applicant's own free text is empty.
+  if (opts.messageBody && opts.messageBody.trim() !== "") return false;
+  // 2. The portal's structured enquiry type names a prospective buyer or tenant.
+  const hay = `${opts.subject}\n${opts.rawText}`.toLowerCase();
+  const buyerTenantType =
+    /(tenant enquiry|buyer enquiry|looking to (rent|buy)|organise a viewing|arrange a viewing|book a viewing|has enquired about this property|wants to view this property)/.test(
+      hay
+    );
+  if (!buyerTenantType) return false;
+  // 3. Resolved to one of our listings.
+  if (!opts.matchedOurListing) return false;
+  // 4. A non-relay applicant address was recovered.
+  if (!opts.applicantEmail || isNoReply(opts.applicantEmail)) return false;
+  return true;
+}
 
 export async function classify(
   parsed: ParsedEnquiry,

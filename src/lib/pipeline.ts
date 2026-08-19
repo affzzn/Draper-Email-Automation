@@ -2,7 +2,7 @@ import type { GraphMessage } from "./graph";
 import type { Mailbox } from "@prisma/client";
 import { prisma } from "./prisma";
 import { parseMessage, htmlToText } from "./parse";
-import { classify } from "./classify";
+import { classify, isBarePortalViewing } from "./classify";
 import { decide } from "./decide";
 import { generateReply } from "./generate";
 import { defaultTransport } from "./transport";
@@ -63,6 +63,34 @@ export async function processMessage(
   const match = await matchPropertyForEnquiry(parsed, enquiryChannel);
   const priceConfident =
     match.confidence >= MATCH_TRUST_THRESHOLD && match.property?.priceActual != null;
+
+  // Portal-envelope override (§v5.5): a bare portal lead (applicant typed nothing) on one
+  // of our listings is a viewing_request by construction. Set it deterministically at 0.90
+  // instead of letting the LLM's low score on an empty message send it to the review pile.
+  // The LLM's original result is preserved under classifierRaw.llm for divergence review.
+  // Also force every applicant-signal to its empty value so portal furniture cannot push
+  // the reply onto Shape B/C or bump the alternatives count. Applied BEFORE routing so a
+  // corrected intent routes correctly.
+  const matchedOurListing =
+    match.confidence >= MATCH_TRUST_THRESHOLD && !!match.property;
+  if (
+    isBarePortalViewing({
+      source: parsed.source,
+      subject: msg.subject ?? "",
+      rawText: textBody,
+      messageBody: parsed.messageBody,
+      applicantEmail: parsed.applicantEmail,
+      matchedOurListing,
+    })
+  ) {
+    classification.intent = "viewing_request";
+    classification.confidence = 0.9;
+    classification.factualQuestion = null;
+    classification.proposedTime = null;
+    classification.personalContext = null;
+    classification.askedWhatElse = false;
+    classification.raw = { portalEnvelopeOverride: true, llm: classification.raw };
+  }
 
   // Route the enquiry to an owner (§3), configured for w/c 17 Aug. Channel comes from
   // the inbox (reliable), price from the confident match for the £2m split; an

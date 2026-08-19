@@ -62,6 +62,7 @@ enum SuppressionReason {
   ineligible_intent
   repeat_enquiry
   excluded_keyword
+  internal_domain
 }
 
 // One row per inbound message. Idempotent on graphMessageId (spec §5).

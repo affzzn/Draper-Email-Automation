@@ -322,6 +322,16 @@ export async function generateReply(params: {
   const proposedTimeNote = classification.proposedTime
     ? `The applicant proposed this for the viewing: "${safeText(classification.proposedTime)}". Refer to what they proposed so they can see it was read, but you have no diary access and must NOT say or imply it works, is fine, is available or suits us. Tell them you will confirm availability and come back to them on the timing (you may also ask what exact time within their window would suit, only as noting their preference). Never confirm or book a slot, and never fall back to a generic "when would suit" that ignores the time they gave. Put this after the viewing offer, not before it.`
     : "";
+
+  // Blank portal enquiry (§v5.5, Rule 21). Injected only when the applicant typed no
+  // message. Mutually exclusive with proposedTimeNote: a proposed time means the message
+  // was not empty, but we guard explicitly so the two can never both fire (proposedTime
+  // wins). The furniture check above confirms {{message}} is genuinely empty for these.
+  const messageIsEmpty = !parsed.messageBody || parsed.messageBody.trim() === "";
+  const blankEnquiryNote =
+    messageIsEmpty && !classification.proposedTime
+      ? `This applicant enquired through a portal form and wrote no message, which is normal and expected. Follow the shape you were given. If you were given any shape other than Shape A, follow that shape and ignore the rest of this note. Otherwise use Shape A and nothing beyond the lines Shape A specifies, which includes its alternatives line when alternatives were given. Do not refer to the absence of a message in any way, do not apologise for having little to go on, do not ask what they are looking for or about their budget, area or bedroom count, and do not invent a reason for their enquiry. Thank them, offer to arrange a viewing, naming the property type where you know it (Rule 14), ask when would suit them using a Rule 14 phrasing, then add the alternatives sentence and its tokens if and only if alternatives were given to you, and stop. Around 25 to 40 words, or up to 55 with alternatives.`
+      : "";
   // Never engage with a "property to sell" / valuation signal on a viewing enquiry
   // (Craig: do not offer a valuation to an applicant). Drop it from the context.
   const aboutForModel = /\bto sell\b|sell my|property to sell|valuation|value my/i.test(
@@ -336,7 +346,7 @@ export async function generateReply(params: {
     ["{{shape}}", shape],
     ["{{intent}}", classification.intent],
     ["{{signOff}}", signOff],
-    ["{{firstName}}", firstName ?? ""],
+    ["{{firstName}}", safeText(firstName ?? "")],
     ["{{channel}}", channel],
     ["{{propertyShort}}", propertyShort || "(none, say 'the property')"],
     ["{{availability}}", availability],
@@ -345,6 +355,7 @@ export async function generateReply(params: {
     ["{{requirements}}", safeText(parsed.requirements)],
     ["{{about}}", safeText(aboutForModel)],
     ["{{proposedTimeNote}}", proposedTimeNote],
+    ["{{blankEnquiryNote}}", blankEnquiryNote],
     ["{{propertyFacts}}", propertyFacts],
     ["{{alternativeDescription}}", altDescriptions(altsToUse)],
     ["{{isRepeat}}", params.isRepeat ? "true" : "false"],

@@ -203,8 +203,24 @@ export async function decide(params: {
     return base;
   }
 
+  // Internal domain (§v5.5): never auto-reply to our own staff — a test lead, or an
+  // enquiry forwarded internally. Suppress with its own reason so the row still shows on
+  // the dashboard as suppressed rather than silently getting a real reply from sales@.
+  const internalDomains = (process.env.INTERNAL_DOMAINS ?? "draperlondon.com")
+    .split(/[\s,;]+/)
+    .map((d) => d.trim().toLowerCase())
+    .filter(Boolean);
+  const applicantDomain = (parsed.applicantEmail ?? "").split("@")[1]?.toLowerCase() ?? "";
+  if (
+    applicantDomain &&
+    internalDomains.some((d) => applicantDomain === d || applicantDomain.endsWith("." + d))
+  ) {
+    base.suppressed = true;
+    base.suppressionReason = "internal_domain";
+  }
+
   // ── Suppression (recorded, not enforced) ───────────────────────────────────
-  if (isAutomatedBulk(msg, parsed)) {
+  if (!base.suppressed && isAutomatedBulk(msg, parsed)) {
     base.suppressed = true;
     base.suppressionReason = "auto_responder_guard";
   }
