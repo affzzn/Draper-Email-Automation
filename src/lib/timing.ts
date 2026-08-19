@@ -8,11 +8,11 @@ const LONDON = "Europe/London";
 //             otherwise same as immediate.
 // Europe/London handles BST automatically via the IANA tz database.
 export interface SendWindows {
-  immediate: Date; // received + 6 minutes (the standard rule)
+  immediate: Date; // received + 4 minutes (the standard rule)
   held: Date; // final send time: overnight enquiries held to 05:30, else same as immediate
 }
 
-const SEND_DELAY_MS = 6 * 60 * 1000; // send 6 minutes after the enquiry is received
+const SEND_DELAY_MS = 4 * 60 * 1000; // send 4 minutes after the enquiry is received
 const OVERNIGHT_CUTOFF_MIN = 5 * 60 + 30; // 05:30 London
 
 export function computeSendWindows(receivedAt: Date): SendWindows {

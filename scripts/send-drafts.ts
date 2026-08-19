@@ -11,7 +11,7 @@ import { assigneeEmail } from "../src/lib/assignees";
 // independent checks (SEND_MODE, hardcoded floor, SEND_ALLOWLIST env, and a
 // re-check inside GraphTransport) and each draft is sent at most once (sentAt guard).
 //
-// Runs on a ~2-min cron. A draft becomes due 6 minutes after the enquiry arrived
+// Runs on a ~2-min cron. A draft becomes due 4 minutes after the enquiry arrived
 // (Decision.wouldSendAtImmediate), giving an abort window: suspend this cron and
 // nothing goes out.
 async function main() {
