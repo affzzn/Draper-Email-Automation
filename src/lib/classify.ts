@@ -1,5 +1,5 @@
 import type { Intent } from "@prisma/client";
-import { complete } from "./anthropic";
+import { complete, anthropic } from "./anthropic";
 import type { ParsedEnquiry } from "./parse";
 import generationConfig from "../../config/generation.json";
 
@@ -7,7 +7,9 @@ export interface Classification {
   intent: Intent;
   confidence: number;
   factualQuestion: string | null; // the question they asked, for the follow-up call
-  proposedTime: string | null; // a day/time they proposed for a viewing (Rule 4.6), or null
+  proposedTime: string | null; // a day/time they proposed for a viewing (Rule 16), or null
+  personalContext: string | null; // concrete personal logistic (relocation, move date, first-time buyer), or null
+  askedWhatElse: boolean; // did they ask about other/similar/alternative properties
   raw: unknown; // stored for calibration (spec §6.5)
 }
 
@@ -34,6 +36,8 @@ function heuristic(parsed: ParsedEnquiry, subject: string): Classification {
   const base = {
     factualQuestion: null as string | null,
     proposedTime: null as string | null,
+    personalContext: null as string | null,
+    askedWhatElse: false,
     raw: { heuristic: true },
   };
 
@@ -55,11 +59,32 @@ function heuristic(parsed: ParsedEnquiry, subject: string): Classification {
   return { intent: "other", confidence: 0.32, ...base };
 }
 
+// Pull the JSON object out of the model's reply. Greedy match spans the first "{"
+// to the last "}", which tolerates leading/trailing prose or code fences. Returns
+// null on no-match or invalid JSON so the caller can retry.
+function extractJson(out: string | null): Record<string, unknown> | null {
+  if (!out) return null;
+  const m = out.match(/\{[\s\S]*\}/);
+  if (!m) return null;
+  try {
+    return JSON.parse(m[0]) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+const clean = (v: unknown): string | null =>
+  typeof v === "string" && v.trim() && v.trim().toLowerCase() !== "null"
+    ? v.trim()
+    : null;
+
 export async function classify(
   parsed: ParsedEnquiry,
   subject: string
 ): Promise<Classification> {
   const fallback = heuristic(parsed, subject);
+  // No API key -> deterministic heuristic (don't burn an attempt that can't succeed).
+  if (!anthropic()) return fallback;
 
   const userText = [
     `Mailbox source: ${parsed.source}`,
@@ -68,41 +93,43 @@ export async function classify(
     `Applicant message: ${parsed.messageBody ?? "(none provided)"}`,
   ].join("\n");
 
-  try {
-    const out = await complete({
-      system: generationConfig.classifierSystemPrompt,
-      user: userText,
-      maxTokens: 200,
-      temperature: 0,
-    });
-    if (!out) return fallback;
+  // Try the model up to twice before dropping to the heuristic: a single malformed
+  // JSON reply should not silently downgrade the classification (which caps confidence
+  // low and can make a genuine lead ineligible). The 2nd attempt nudges JSON-only.
+  // NOTE: the installed @anthropic-ai/sdk predates output_config/structured outputs;
+  // upgrading the SDK would let us guarantee valid JSON and delete this retry.
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const out = await complete({
+        system: generationConfig.classifierSystemPrompt,
+        user:
+          attempt === 0
+            ? userText
+            : `${userText}\n\nReturn ONLY the strict JSON object described, and nothing else.`,
+        maxTokens: 250,
+        temperature: 0,
+      });
+      const parsedOut = extractJson(out);
+      if (!parsedOut) continue; // retry, then fall through
+      const intent = parsedOut.intent;
+      if (!VALID_INTENTS.includes(intent as Intent)) continue; // retry on bad intent
 
-    const jsonMatch = out.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) return fallback;
-    const parsedOut = JSON.parse(jsonMatch[0]) as {
-      intent?: string;
-      confidence?: number;
-      reasoning?: string;
-      factualQuestion?: string | null;
-      proposedTime?: string | null;
-    };
+      let confidence =
+        typeof parsedOut.confidence === "number" ? parsedOut.confidence : fallback.confidence;
+      confidence = Math.max(0, Math.min(1, confidence));
 
-    const intent = VALID_INTENTS.includes(parsedOut.intent as Intent)
-      ? (parsedOut.intent as Intent)
-      : fallback.intent;
-    let confidence =
-      typeof parsedOut.confidence === "number" ? parsedOut.confidence : fallback.confidence;
-    confidence = Math.max(0, Math.min(1, confidence));
-
-    const clean = (v: unknown): string | null =>
-      typeof v === "string" && v.trim() && v.trim().toLowerCase() !== "null"
-        ? v.trim()
-        : null;
-    const fq = clean(parsedOut.factualQuestion);
-    const proposedTime = clean(parsedOut.proposedTime);
-
-    return { intent, confidence, factualQuestion: fq, proposedTime, raw: parsedOut };
-  } catch {
-    return fallback;
+      return {
+        intent: intent as Intent,
+        confidence,
+        factualQuestion: clean(parsedOut.factualQuestion),
+        proposedTime: clean(parsedOut.proposedTime),
+        personalContext: clean(parsedOut.personalContext),
+        askedWhatElse: parsedOut.askedWhatElse === true,
+        raw: parsedOut,
+      };
+    } catch {
+      /* retry, then fall through to the heuristic */
+    }
   }
+  return fallback;
 }

@@ -135,6 +135,7 @@ function selectShape(
   availability: string,
   factualQuestion: string | null,
   proposedTime: string | null,
+  personalContext: string | null,
   message: string | null
 ): "A" | "B" | "C" | "D" | "E" {
   if (intent === "valuation_request") return "E";
@@ -144,14 +145,17 @@ function selectShape(
     !!factualQuestion ||
     // Genuine look-up facts only. Availability is NOT here (a "is it available?"
     // question is answered by the availability field / handled as a normal viewing,
-    // never as "I will find out"), nor are viewing times (Rule 4.6 handles those).
+    // never as "I will find out"), nor are viewing times (Rule 16 handles those).
     /\b(lease|service charge|ground rent|epc|pets?|parking|chain|tenure|square (feet|footage)|sq ?ft|council tax|furnished|unfurnished|garden|deposit)\b\??/i.test(
       msg
     ) && /\?/.test(msg);
   if (hasFactual) return "B";
   // Actionable context only. A couple/family mention ("my wife and I") is NOT context
   // to respond to — it invites gushing (Rule 19) and belongs in a bare Shape A reply.
+  // Primary signal is the classifier's `personalContext` (catches paraphrases a regex
+  // misses); the keyword regex stays as an additive backstop so we never lose coverage.
   const hasContext =
+    !!personalContext ||
     /\brelocat|moving (from|over|to)|move[- ]?in|move date|first[- ]?time buyer|current lease|lease ends|corporate let|embassy|student|starting (work|a job)/i.test(
       msg
     );
@@ -161,9 +165,14 @@ function selectShape(
   return "A";
 }
 
-function askedWhatElse(message: string | null): boolean {
-  return /what else|anything else|else do you have|other propert|similar propert|alternatives?/i.test(
-    message ?? ""
+// True if they asked about other/similar/alternative properties. Classifier signal is
+// primary (catches phrasings the regex misses); the regex remains an additive backstop.
+function askedWhatElse(classifierAsked: boolean, message: string | null): boolean {
+  return (
+    classifierAsked ||
+    /what else|anything else|else do you have|other propert|similar propert|alternatives?/i.test(
+      message ?? ""
+    )
   );
 }
 
@@ -259,6 +268,7 @@ export async function generateReply(params: {
     availability,
     classification.factualQuestion,
     classification.proposedTime,
+    classification.personalContext,
     parsed.messageBody
   );
 
@@ -268,7 +278,7 @@ export async function generateReply(params: {
   // v5: the shape B suppression is gone too. Craig was asked whether he wanted
   // alternatives on all enquiries or just some and said "For all inquiries". Up to
   // three are now passed through (two is the normal case). Valuations get none.
-  const asked = askedWhatElse(parsed.messageBody);
+  const asked = askedWhatElse(classification.askedWhatElse, parsed.messageBody);
   const reqBeds = bedroomsHintFrom(parsed.requirements);
   const seedOutcode = property?.outcode ?? outcodeOf(parsed.propertyAddress);
   const seedPrice = property?.priceActual ?? parsed.budgetMax ?? null;
@@ -344,21 +354,28 @@ export async function generateReply(params: {
   let body: string | null = null;
   let generatedByLLM = false;
 
+  // Try the model up to twice before using the deterministic template. A reply that
+  // fails validation (missing {{SIGNATURE}} or over length) or a transient API error
+  // should not silently drop to the canned fallback — retry once first. The fallback
+  // firing is recorded as generatedByLLM:false in metadata and surfaced on the review
+  // dashboard so an invisible template swap is never mistaken for a model mistake.
   if (anthropic()) {
-    try {
-      const out = await complete({ system: systemPrompt, user: userPrompt, maxTokens: 450 });
-      let cleaned = out ? stripModelLinks(stripCodeFences(out)) : null;
-      if (cleaned && cleaned.includes("{{SIGNATURE}}") && wordCount(cleaned) <= HARD + 12) {
-        // Drop any alternative token the model emitted that we have no property for.
-        for (let n = altsToUse.length + 1; n <= 3; n++) {
-          const stray = new RegExp(`<p>\\s*\\{\\{ALT_${n}\\}\\}\\s*</p>`, "gi");
-          cleaned = cleaned.replace(stray, "").replace(new RegExp(`\\{\\{ALT_${n}\\}\\}`, "g"), "");
+    for (let attempt = 0; attempt < 2 && !body; attempt++) {
+      try {
+        const out = await complete({ system: systemPrompt, user: userPrompt, maxTokens: 450 });
+        let cleaned = out ? stripModelLinks(stripCodeFences(out)) : null;
+        if (cleaned && cleaned.includes("{{SIGNATURE}}") && wordCount(cleaned) <= HARD + 12) {
+          // Drop any alternative token the model emitted that we have no property for.
+          for (let n = altsToUse.length + 1; n <= 3; n++) {
+            const stray = new RegExp(`<p>\\s*\\{\\{ALT_${n}\\}\\}\\s*</p>`, "gi");
+            cleaned = cleaned.replace(stray, "").replace(new RegExp(`\\{\\{ALT_${n}\\}\\}`, "g"), "");
+          }
+          body = cleaned;
+          generatedByLLM = true;
         }
-        body = cleaned;
-        generatedByLLM = true;
+      } catch {
+        /* retry, then fall through to the template */
       }
-    } catch {
-      /* fall through */
     }
   }
 

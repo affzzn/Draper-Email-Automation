@@ -200,6 +200,9 @@ export default async function Page({ searchParams }: { searchParams: Promise<SP>
                       ) : (
                         <span className="reply none">—</span>
                       )}
+                      {review && e.decision?.generatedBody && e.decision.generationMetadata?.generatedByLLM === false && (
+                        <div className="reason" style={{ color: "#b3261e" }}>⚠ template fallback (model reply rejected)</div>
+                      )}
                     </td>
                     <td>
                       <RawViewer

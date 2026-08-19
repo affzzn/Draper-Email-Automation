@@ -32,7 +32,7 @@ export interface DecisionRow {
   wouldSendAtImmediate: string | null;
   wouldSendAtHeld: string | null;
   generatedBody: string | null;
-  generationMetadata: { availability?: string; alternatives?: { url: string }[] } | null;
+  generationMetadata: { availability?: string; alternatives?: { url: string }[]; generatedByLLM?: boolean } | null;
 }
 
 export interface EnquiryRow {
