@@ -215,7 +215,7 @@ function fallbackBody(
     }
   } else {
     parts.push(`<p>Thank you for your enquiry.</p>`);
-    parts.push(`<p>We would be delighted to arrange a viewing of ${who}. When would suit you?</p>`);
+    parts.push(`<p>We would be delighted to arrange a viewing of ${who}. Please let us know when might suit you to view.</p>`);
     if (alts.length) {
       parts.push(`<p>We also have something similar in the area, in case it is of interest.</p>`);
       alts.forEach((_, i) => parts.push(`<p>{{ALT_${i + 1}}}</p>`));
