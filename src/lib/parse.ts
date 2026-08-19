@@ -139,6 +139,81 @@ function signedNameFrom(text: string): string | null {
   return line || null;
 }
 
+// Rightmove's newer "Enquiry Manager" lead format has NO "Label: value" lines — it is
+// free-form with ALL-CAPS section headers. Real tenant-lead shape:
+//   Hi, {First} has enquired about this property
+//   {property address, incl. full postcode}
+//   £{price} pcm • {n} bed
+//   {applicant full name}
+//   {applicant email}
+//   {applicant phone}
+//   {applicant's own address}
+//   MOVING DATE ... / DURATION ... / EMPLOYMENT ...
+//   MESSAGE FROM APPLICANT
+//   {their message}
+//   APPLICANT WOULD LIKE
+//   ...
+// Returns the fields recoverable from this layout, or null if it isn't this format.
+function parseRightmoveEnquiryManager(text: string): {
+  applicantName: string | null;
+  applicantPhone: string | null;
+  propertyAddress: string | null;
+  messageBody: string | null;
+} | null {
+  if (!/has enquired about this property/i.test(text)) return null;
+
+  const lines = text
+    .split(/\n/)
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0);
+
+  // Property: the line immediately after "has enquired about this property" (skip it if
+  // that line is the price, e.g. "£9,000 pcm • 4 bed").
+  let propertyAddress: string | null = null;
+  const enqIdx = lines.findIndex((l) => /has enquired about this property/i.test(l));
+  if (enqIdx !== -1 && lines[enqIdx + 1] && !/^£/.test(lines[enqIdx + 1])) {
+    propertyAddress = lines[enqIdx + 1];
+  }
+
+  // Applicant name is the line just before the first standalone email; phone is the
+  // line just after it.
+  const emailLine = /^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/i;
+  const emailIdx = lines.findIndex((l) => emailLine.test(l));
+  let applicantName: string | null = null;
+  let applicantPhone: string | null = null;
+  if (emailIdx > 0) {
+    applicantName = cleanName(lines[emailIdx - 1]);
+    const after = lines[emailIdx + 1] ?? "";
+    const digits = after.replace(/\D/g, "");
+    if (digits.length >= 7 && digits.length <= 15 && /^[+\d\s()-]+$/.test(after)) {
+      applicantPhone = after;
+    }
+  }
+  // Fallback name from the greeting line if the block name did not validate.
+  if (!applicantName) {
+    const m = text.match(/Hi,\s*([^\n,]+?)\s+has enquired about this property/i);
+    if (m) applicantName = cleanName(m[1]);
+  }
+
+  // Message: the lines after "MESSAGE FROM APPLICANT" up to the next ALL-CAPS section
+  // header (MOVING DATE, SOFT CREDIT CHECK CONSENT, APPLICANT WOULD LIKE, …) or footer.
+  let messageBody: string | null = null;
+  const msgIdx = lines.findIndex((l) => /^MESSAGE FROM APPLICANT/i.test(l));
+  if (msgIdx !== -1) {
+    const collected: string[] = [];
+    for (let i = msgIdx + 1; i < lines.length; i++) {
+      const l = lines[i];
+      if (/^[A-Z][A-Z0-9 &'-]{3,}$/.test(l)) break; // next ALL-CAPS section header
+      if (/^©|Rightmove Group Limited|Go to Enquiry Manager|Find out more/i.test(l)) break;
+      collected.push(l);
+    }
+    const joined = collected.join(" ").trim();
+    if (joined) messageBody = joined;
+  }
+
+  return { applicantName, applicantPhone, propertyAddress, messageBody };
+}
+
 export function parseMessage(msg: GraphMessage): ParsedEnquiry {
   const notes: string[] = [];
   const subject = msg.subject ?? "";
@@ -151,6 +226,11 @@ export function parseMessage(msg: GraphMessage): ParsedEnquiry {
   const fromAddr = msg.from?.emailAddress?.address ?? "";
   const replyToAddr = msg.replyTo?.[0]?.emailAddress?.address ?? null;
   const source = detectSource(fromAddr, subject, text);
+
+  // Rightmove's newer "Enquiry Manager" lead format carries NO "Label: value" lines,
+  // so grabLabelled finds nothing. Parse it specially and use its fields as fallbacks
+  // wherever the label-based parse comes up empty (fully additive).
+  const em = source === "rightmove" ? parseRightmoveEnquiryManager(text) : null;
 
   // ── Applicant email resolution: From → Reply-To → body (spec §6.2) ─────────
   let applicantEmail: string | null = null;
@@ -195,26 +275,36 @@ export function parseMessage(msg: GraphMessage): ParsedEnquiry {
     cleanName(signedName) ??
     cleanName(labelledName) ??
     cleanName(headerName) ??
+    em?.applicantName ??
     null;
   if (!applicantName && (signedName || labelledName || headerName)) {
     notes.push("name: candidate rejected as malformed, using no name");
   }
 
-  const applicantPhone = grabLabelled(text, [
-    "Phone",
-    "Telephone",
-    "Tel",
-    "Mobile",
-    "Contact number",
-    "Phone number",
-  ]);
+  const applicantPhone =
+    grabLabelled(text, [
+      "Phone",
+      "Telephone",
+      "Telephone number",
+      "Mobile",
+      "Mobile number",
+      "Tel",
+      "Contact number",
+      "Phone number",
+    ]) ?? em?.applicantPhone ?? null;
 
+  // Order matters (first match wins): prefer the agency-reference forms that carry a
+  // usable token (Rightmove PropReference "83517_DRL260226"; Zoopla "Your property ref"
+  // which is sometimes "164621_DRL260149_L"). "Unique Reference" is deliberately NOT
+  // matched — it is only a Zoopla listing id, never our agency reference.
   const propertyReference = grabLabelled(text, [
     "PropReference",
     "Property reference",
+    "Your property ref",
+    "Property ref",
+    "Rightmove reference",
     "Reference",
     "Ref",
-    "Property ref",
   ]);
 
   let propertyAddress = grabLabelled(text, [
@@ -236,6 +326,12 @@ export function parseMessage(msg: GraphMessage): ParsedEnquiry {
       notes.push("property: recovered from subject line");
     }
   }
+  // Rightmove Enquiry Manager format: the property (with full postcode) is the line
+  // after "has enquired about this property".
+  if (!propertyAddress && em?.propertyAddress) {
+    propertyAddress = em.propertyAddress;
+    notes.push("property: recovered from Rightmove Enquiry Manager format");
+  }
 
   const propertyUrl =
     grabLabelled(text, ["PropUrl", "Property URL", "Listing", "Link"]) ??
@@ -250,7 +346,7 @@ export function parseMessage(msg: GraphMessage): ParsedEnquiry {
       "Enquiry",
       "Note",
       "Additional information",
-    ]) ?? null;
+    ]) ?? em?.messageBody ?? null;
 
   // Personalization signals from the portal's structured fields.
   const budgetRaw = grabLabelled(text, ["Price range", "Budget", "Max price"]);

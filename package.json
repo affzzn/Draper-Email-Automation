@@ -30,7 +30,8 @@
     "pull": "tsx scripts/pull-inbox.ts",
     "properties:sync": "tsx scripts/sync-properties.ts",
     "properties:match": "tsx scripts/find-similar.ts",
-    "simulate": "tsx scripts/simulate-enquiry.ts"
+    "simulate": "tsx scripts/simulate-enquiry.ts",
+    "test:parse": "tsx scripts/test-parse.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.1",
