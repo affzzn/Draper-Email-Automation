@@ -263,6 +263,10 @@ export async function generateReply(params: {
   const availability = availabilityLabel(property);
   const channel = channelFor(property, mailbox);
   const signOff = hashPick(signOffs, parsed.applicantEmail ?? propertyShort ?? "x");
+  // The reply signs off with the routed negotiator's name (the person cc'd on the reply),
+  // e.g. "Kind regards\nAaron". {{SIGNATURE}} expands to this. Falls back to the config's
+  // signOffNameFallback for direct callers that pass no owner.
+  const signOffName = (params.signOffName ?? generationConfig.signOffNameFallback ?? "").trim();
   const shape = selectShape(
     classification.intent,
     availability,
@@ -399,7 +403,7 @@ export async function generateReply(params: {
   });
   resolved = resolved.replace(/<p>\s*<\/p>/g, "");
   resolved = removeLongDashes(
-    resolved.replace(/\{\{SIGNATURE\}\}/g, signatureFor(mailbox))
+    resolved.replace(/\{\{SIGNATURE\}\}/g, signOffName)
   );
   // With no signature after it, drop a dangling "<br>" left before the paragraph close
   // (so "Kind regards,<br>" doesn't leave a stray blank line before the mailbox block).
