@@ -22,6 +22,7 @@ interface Case {
     ref?: string | null;
     addressIncludes?: string; // substring the parsed address must contain
     messageIncludes?: string | null; // substring the parsed message must contain (null = must be null)
+    enquiryTypeIncludes?: string; // substring the parsed portal enquiry type must contain
     parseStatus?: string;
   };
 }
@@ -76,6 +77,7 @@ const cases: Case[] = [
       email: "katemarie.love@gmail.com",
       phone: "07513 343968",
       addressIncludes: "Clifton Gardens",
+      enquiryTypeIncludes: "Organise a viewing",
       parseStatus: "full",
     },
   },
@@ -295,6 +297,36 @@ const cases: Case[] = [
     },
     expect: { name: "Nikos Kousiaris" },
   },
+  {
+    // The "meow" test lead: a genuine viewing enquiry on our listing whose typed message is
+    // gibberish + a "has a property to sell" note. The portal's "Wants more details on this
+    // property" opportunity must be captured so the classifier can score it as a viewing.
+    label: "Rightmove SALES (Francesca 'meow' + wants more details) -> portal viewing signal captured",
+    msg: {
+      id: "r-meow",
+      subject: "Potential valuation: Circus Road - Buyer from W9",
+      from: relay("Rightmove", "noreply@rightmove.co.uk"),
+      body: {
+        contentType: "text",
+        content:
+          "Rightmove Lead: Francesca Hughes-Campbell\nContact details\nFrancesca Hughes-Campbell\nfrancesca@draperlondon.com\n02031431900\n" +
+          "Your opportunities\nHas a property to sell: yes, it is not yet on the market\nWants more details on this property\n" +
+          "3 bed Apartment for sale\nFlat 35, South Lodge, South Lodge, St John's Wood, London, NW8, NW8 9ES\n£1,695,000\nStatus: Available\n83517_DRL260299\n" +
+          "Additional Comments\nmeow\n" +
+          "Name:Francesca Hughes-Campbell; Email:francesca@draperlondon.com; Phone:02031431900; Requirements: Has a property to sell: yes, it is not yet on the market; Wants more details on this property; PropAddress:Flat 35, South Lodge, South Lodge, St John's Wood, London, NW8, NW8 9ES; PropReference:83517_DRL260299; Comments:meow\n© Rightmove Group Limited",
+      },
+    },
+    expect: {
+      source: "rightmove",
+      name: "Francesca Hughes-Campbell",
+      email: "francesca@draperlondon.com",
+      ref: "83517_DRL260299",
+      addressIncludes: "South Lodge",
+      messageIncludes: "meow",
+      enquiryTypeIncludes: "more details on this property",
+      parseStatus: "full",
+    },
+  },
 ];
 
 let failures = 0;
@@ -321,6 +353,13 @@ for (const c of cases) {
     if (e.messageIncludes === null) check(c.label, "message", p.messageBody, p.messageBody === null);
     else check(c.label, "message", p.messageBody, !!p.messageBody && p.messageBody.includes(e.messageIncludes));
   }
+  if (e.enquiryTypeIncludes !== undefined)
+    check(
+      c.label,
+      "enquiryType",
+      p.enquiryType,
+      !!p.enquiryType && p.enquiryType.toLowerCase().includes(e.enquiryTypeIncludes.toLowerCase())
+    );
   if (e.parseStatus !== undefined) check(c.label, "parseStatus", p.parseStatus, p.parseStatus === e.parseStatus);
   console.log(
     `  name=${JSON.stringify(p.applicantName)} email=${JSON.stringify(p.applicantEmail)} phone=${JSON.stringify(p.applicantPhone)} ref=${JSON.stringify(p.propertyReference)}`

@@ -1,6 +1,7 @@
 import "./loadEnv";
 import type { GraphMessage } from "../src/lib/graph";
 import type { ParsedEnquiry } from "../src/lib/parse";
+import { portalEnquiryType } from "../src/lib/parse";
 import { classify } from "../src/lib/classify";
 import { matchPropertyForEnquiry, typeWord } from "../src/lib/propertyLink";
 import { routeEnquiry, availabilityMap } from "../src/lib/routing";
@@ -33,6 +34,7 @@ function reconstructParsed(e: any): ParsedEnquiry {
     requirements: e.requirements,
     interestedIn: e.interestedIn,
     aboutApplicant: e.aboutApplicant,
+    enquiryType: portalEnquiryType(e.rawBodyText ?? ""),
     replyTo: e.replyTo,
     emailResolvedFrom: e.emailResolvedFrom,
     parseStatus: e.parseStatus,

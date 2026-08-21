@@ -127,6 +127,7 @@ export async function classify(
     `Mailbox source: ${parsed.source}`,
     `Subject: ${subject}`,
     `Property: ${parsed.propertyAddress ?? parsed.propertyReference ?? "unknown"}`,
+    `Portal-stated enquiry type: ${parsed.enquiryType ?? "(none)"}`,
     `Applicant message: ${parsed.messageBody ?? "(none provided)"}`,
   ].join("\n");
 

@@ -15,6 +15,10 @@ export interface ParsedEnquiry {
   requirements: string | null;
   interestedIn: string | null;
   aboutApplicant: string | null;
+  // The portal's own structured enquiry type / "opportunities" (e.g. "Wants to view this
+  // property", "Organise a viewing"). A reliable intent signal even when the typed message
+  // is short, vague or nonsense. Fed to the classifier; not stored.
+  enquiryType: string | null;
   replyTo: string | null;
   emailResolvedFrom: EmailResolvedFrom;
   parseStatus: ParseStatus;
@@ -242,6 +246,35 @@ function parseRightmoveEnquiryManager(text: string): {
   return { applicantName, applicantPhone, propertyAddress, messageBody };
 }
 
+// The portal's own STRUCTURED enquiry type / "opportunities" — the explicit action the
+// applicant took on the listing (Rightmove "Your opportunities" / "APPLICANT WOULD LIKE";
+// Zoopla "Type of enquiry"). This is a reliable intent statement from the portal itself,
+// so the classifier can trust it even when the free-text message is short/vague/gibberish.
+export function portalEnquiryType(text: string): string | null {
+  const found: string[] = [];
+  const push = (s: string) => {
+    if (!found.some((f) => f.toLowerCase() === s.toLowerCase())) found.push(s);
+  };
+
+  // Zoopla structured field ("Type of enquiry: Organise a viewing" / "Looking to rent").
+  const zt = grabLabelled(text, ["Type of enquiry"]);
+  if (zt) push(zt);
+
+  // Explicit portal action phrases (Rightmove opportunities / Enquiry Manager / Zoopla).
+  const phrases: [RegExp, string][] = [
+    [/wants to view this property/i, "Wants to view this property"],
+    [/more details on this property/i, "Wants more details on this property"],
+    [/book a viewing/i, "Book a viewing"],
+    [/organise a viewing/i, "Organise a viewing"],
+    [/arrange a viewing/i, "Arrange a viewing"],
+    [/looking to rent/i, "Looking to rent"],
+    [/looking to buy/i, "Looking to buy"],
+  ];
+  for (const [re, label] of phrases) if (re.test(text)) push(label);
+
+  return found.length ? found.join("; ") : null;
+}
+
 export function parseMessage(msg: GraphMessage): ParsedEnquiry {
   const notes: string[] = [];
   const subject = msg.subject ?? "";
@@ -419,6 +452,7 @@ export function parseMessage(msg: GraphMessage): ParsedEnquiry {
     requirements,
     interestedIn,
     aboutApplicant,
+    enquiryType: portalEnquiryType(text),
     replyTo: replyToAddr,
     emailResolvedFrom,
     parseStatus,
