@@ -107,6 +107,14 @@ const NAME_STOPWORDS = new Set([
   "team", "enquiries", "enquiry", "sales", "lettings", "info", "admin", "office",
   // Portal/brand sender names are never a person — reject so we drop to no name.
   "rightmove", "zoopla", "onthemarket", "noreply", "no-reply", "donotreply",
+  // Rightmove/Zoopla template + "Enquiry Manager" section words. These appear directly
+  // after an applicant's sign-off in a portal lead and were being grabbed as the signed
+  // name (e.g. "APPLICANT WOULD LIKE" -> "Dear APPLICANT", "SOFT CREDIT CHECK CONSENT" ->
+  // "Dear SOFT"). No person's name contains these, so rejecting them is safe.
+  "applicant", "message", "consent", "credit", "check", "soft", "moving", "duration",
+  "employment", "affordability", "guarantor", "adverse", "smokers", "pets", "viewing",
+  "book", "details", "contact", "would", "like", "property", "properties", "view",
+  "renter", "household", "income", "date", "manager",
 ]);
 
 // Return the raw string only if it looks like a real personal name. Rejects
@@ -130,13 +138,21 @@ function cleanName(raw: string | null | undefined): string | null {
 }
 
 // How the applicant signed the body, e.g. the line after "Kind regards,".
+// GUARDED: a sign-off word can also appear inside the applicant's own message (e.g. a
+// Rightmove Enquiry Manager lead where the message ends "…thanks" and the next line is
+// an ALL-CAPS section header like "APPLICANT WOULD LIKE"). A real signature is a short,
+// mixed-case name, so we reject candidates that are all-caps (a header) or more than
+// three words (a template line such as "Contact X now"). cleanName() applies the rest.
 function signedNameFrom(text: string): string | null {
   const m = text.match(
     /\b(?:kind regards|best regards|warm regards|many thanks|best wishes|kind wishes|yours sincerely|yours faithfully|sincerely|regards|thanks|thank you|cheers|all the best|best)\b[,.!]?\s*\n+\s*([^\n]{2,40})/i
   );
   if (!m) return null;
   const line = m[1].trim().replace(/^[-–—•*]+\s*/, "");
-  return line || null;
+  if (!line) return null;
+  if (line.split(/\s+/).length > 3) return null; // a template line, not a signature
+  if (!/[a-z]/.test(line)) return null; // ALL-CAPS -> a section header, not a name
+  return line;
 }
 
 // Rightmove's newer "Enquiry Manager" lead format has NO "Label: value" lines — it is
@@ -313,7 +329,14 @@ export function parseMessage(msg: GraphMessage): ParsedEnquiry {
     "Property address",
     "Address",
   ]);
-  // Rightmove subject format, e.g. "Sales enquiry: Oberman Road - Tenant from SW8".
+  // Rightmove Enquiry Manager format: the property (with its full postcode) is the line
+  // after "has enquired about this property". Prefer this over the subject fragment, which
+  // is less complete and can even name a different property than the one enquired about.
+  if (!propertyAddress && em?.propertyAddress) {
+    propertyAddress = em.propertyAddress;
+    notes.push("property: recovered from Rightmove Enquiry Manager format");
+  }
+  // Rightmove subject format fallback, e.g. "Sales enquiry: Oberman Road - Tenant from SW8".
   // A fixed template, so recover the property from the subject when the body has none.
   if (!propertyAddress) {
     // Separator may be a hyphen, en dash or em dash; role may be buyer/tenant/
@@ -325,12 +348,6 @@ export function parseMessage(msg: GraphMessage): ParsedEnquiry {
       propertyAddress = sm[1].trim();
       notes.push("property: recovered from subject line");
     }
-  }
-  // Rightmove Enquiry Manager format: the property (with full postcode) is the line
-  // after "has enquired about this property".
-  if (!propertyAddress && em?.propertyAddress) {
-    propertyAddress = em.propertyAddress;
-    notes.push("property: recovered from Rightmove Enquiry Manager format");
   }
 
   const propertyUrl =

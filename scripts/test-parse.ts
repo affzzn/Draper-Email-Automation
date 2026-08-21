@@ -184,6 +184,100 @@ const cases: Case[] = [
       parseStatus: "full",
     },
   },
+  {
+    // Regression: message ends with a sign-off word ("Thanks") and the next line is an
+    // ALL-CAPS section header. Must NOT become the name ("Dear APPLICANT").
+    label: "Rightmove LETTINGS (EBINYU, Enquiry Manager, message ends 'Thanks')",
+    msg: {
+      id: "r-ebinyu",
+      subject: "Lettings enquiry: Oberman Road - Tenant from NW8",
+      from: relay("Rightmove", "noreply@rightmove.co.uk"),
+      body: {
+        contentType: "text",
+        content:
+          "Hi, EBINYU has enquired about this property\nFLAT 39, JOSEPHINE HOUSE, 10, Josephine House, Willesden, London, NW10, NW10 1EF\n£2,250 pcm • 2 bed\n" +
+          "EBINYU Faloughi\nbebifal4@gmail.com\n7512635695\nNeville court, NW8 9DD\n" +
+          "MOVING DATE Within 1 month\nDURATION 18 months\nEMPLOYMENT Full time employed\n" +
+          "MESSAGE FROM APPLICANT\nHi , I wanted to confirm whether parking is included in the asking price. Thanks\n" +
+          "APPLICANT WOULD LIKE\nMore details on this property\nBook a viewing\n© Rightmove Group Limited",
+      },
+    },
+    expect: {
+      source: "rightmove",
+      name: "EBINYU Faloughi",
+      email: "bebifal4@gmail.com",
+      addressIncludes: "JOSEPHINE HOUSE",
+      messageIncludes: "parking is included",
+      parseStatus: "full",
+    },
+  },
+  {
+    // Regression: message ends "many thanks" and the next section is SOFT CREDIT CHECK
+    // CONSENT. Must NOT become the name ("Dear SOFT").
+    label: "Rightmove LETTINGS (Sam, Enquiry Manager, message ends 'many thanks')",
+    msg: {
+      id: "r-sam",
+      subject: "",
+      from: relay("Rightmove", "noreply@rightmove.co.uk"),
+      body: {
+        contentType: "text",
+        content:
+          "Hi, Sam has enquired about this property\nFLAT 33, SOUTH LODGE, Circus Road, London, NW8, NW8 9ES\n£9,000 pcm • 4 bed\n" +
+          "Sam Patel\nsam.patel@gmail.com\n7911223344\n" +
+          "MESSAGE FROM APPLICANT\nKeen to view this asap, many thanks\nSOFT CREDIT CHECK CONSENT\nYes\n" +
+          "APPLICANT WOULD LIKE\nBook a viewing\n© Rightmove Group Limited",
+      },
+    },
+    expect: {
+      source: "rightmove",
+      name: "Sam Patel",
+      email: "sam.patel@gmail.com",
+      addressIncludes: "SOUTH LODGE",
+      messageIncludes: "Keen to view",
+      parseStatus: "full",
+    },
+  },
+  {
+    label: "Rightmove SALES (Gerard, semicolon format) -> Dear Gerard",
+    msg: {
+      id: "r-gerard",
+      subject: "Sales enquiry: Harvist Road - Buyer from W9",
+      from: relay("Rightmove", "noreply@rightmove.co.uk"),
+      body: {
+        contentType: "text",
+        content:
+          "Rightmove Lead: Gerard Crichlow\nContact details\nGerard Crichlow\ngcrichlow9@gmail.com\n07525823423\n" +
+          "3 bed Apartment for sale\n119C, Harvist Road, Queen's Park, London, NW6, NW6 6HA\n£1,100,000\n83517_DRL260189\n" +
+          "Additional Comments\nHello interested in viewing the property\n" +
+          "Name:Gerard Crichlow; Email:gcrichlow9@gmail.com; Phone:07525823423; PropAddress:119C, Harvist Road, Queen's Park, London, NW6, NW6 6HA; PropReference:83517_DRL260189; Comments:Hello interested in viewing the property\n© Rightmove Group Limited",
+      },
+    },
+    expect: {
+      source: "rightmove",
+      name: "Gerard Crichlow",
+      email: "gcrichlow9@gmail.com",
+      ref: "83517_DRL260189",
+      addressIncludes: "Harvist Road",
+      parseStatus: "full",
+    },
+  },
+  {
+    // No regression: a GENUINE signed name (mixed-case) must still win over a malformed
+    // labelled field ("Viola And") — the deliberate "prefer the signed name" behaviour.
+    label: "Genuine signature still wins over a malformed label",
+    msg: {
+      id: "nikos",
+      subject: "Enquiry",
+      from: relay("Zoopla", "members@zoopla.co.uk"),
+      body: {
+        contentType: "text",
+        content:
+          "Zoopla\nName: Viola And\nAddress: Some Street, London W9\n" +
+          "Message:\nI would like to view this property please.\n\nKind regards,\nNikos Kousiaris",
+      },
+    },
+    expect: { name: "Nikos Kousiaris" },
+  },
 ];
 
 let failures = 0;
