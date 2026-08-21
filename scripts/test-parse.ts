@@ -204,12 +204,29 @@ const cases: Case[] = [
     },
     expect: {
       source: "rightmove",
-      name: "EBINYU Faloughi",
+      name: "Ebinyu Faloughi", // ALL-CAPS "EBINYU" normalised to title case
       email: "bebifal4@gmail.com",
       addressIncludes: "JOSEPHINE HOUSE",
       messageIncludes: "parking is included",
       parseStatus: "full",
     },
+  },
+  {
+    // Title-case normalisation must NOT mangle an intentionally-cased surname (McDonald).
+    label: "Name normalisation preserves mixed-case surnames (McDonald)",
+    msg: {
+      id: "r-mcd",
+      subject: "",
+      from: relay("Rightmove", "noreply@rightmove.co.uk"),
+      body: {
+        contentType: "text",
+        content:
+          "Hi, Aoife has enquired about this property\n12 Some Road, London, W9 1AA\n£2,000 pcm • 1 bed\n" +
+          "Aoife McDonald\naoife.mcd@gmail.com\n7900000000\n" +
+          "MESSAGE FROM APPLICANT\nInterested, thanks\nAPPLICANT WOULD LIKE\nBook a viewing\n© Rightmove Group Limited",
+      },
+    },
+    expect: { source: "rightmove", name: "Aoife McDonald" },
   },
   {
     // Regression: message ends "many thanks" and the next section is SOFT CREDIT CHECK

@@ -117,9 +117,21 @@ const NAME_STOPWORDS = new Set([
   "renter", "household", "income", "date", "manager",
 ]);
 
-// Return the raw string only if it looks like a real personal name. Rejects
-// emails, ids, sentences, and dangling fragments such as "Viola And" so the reply
-// falls back to "Dear Sir or Madam" rather than guessing (spec item 5.4).
+// Normalise a name to title case, PER WORD, so a portal's shouty "EBINYU FALOUGHI"
+// greets as "Dear Ebinyu" — but leave a word that is already intentionally mixed-case
+// beyond its first letter (McDonald, O'Brien, DeVries, van der Berg) exactly as written.
+function titleCaseWord(w: string): string {
+  const body = w.slice(1);
+  if (/[a-z]/.test(body) && /[A-Z]/.test(body)) return w; // McDonald, O'Brien — trust it
+  return w.replace(/[A-Za-z]+/g, (r) => r.charAt(0).toUpperCase() + r.slice(1).toLowerCase());
+}
+function titleCaseName(s: string): string {
+  return s.split(/\s+/).map(titleCaseWord).join(" ");
+}
+
+// Return the raw string only if it looks like a real personal name, normalised to title
+// case. Rejects emails, ids, sentences, and dangling fragments such as "Viola And" so the
+// reply falls back to "Dear Sir or Madam" rather than guessing (spec item 5.4).
 function cleanName(raw: string | null | undefined): string | null {
   if (!raw) return null;
   const s = raw
@@ -134,7 +146,7 @@ function cleanName(raw: string | null | undefined): string | null {
   if (tokens.some((t) => NAME_STOPWORDS.has(t.toLowerCase()))) return null;
   // Each token must be alphabetic; allow hyphen/apostrophe (O'Brien, Anne-Marie).
   if (!tokens.every((t) => /^[a-z][a-z'’-]*$/i.test(t))) return null;
-  return s;
+  return titleCaseName(s);
 }
 
 // How the applicant signed the body, e.g. the line after "Kind regards,".
