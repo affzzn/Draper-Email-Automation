@@ -133,6 +133,8 @@ model Enquiry {
 
   decision Decision?
 
+  playgroundRuns PlaygroundRun[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -207,6 +209,64 @@ model TeamMember {
   name      String   @id
   available Boolean  @default(true)
   updatedAt DateTime @updatedAt
+}
+
+// ── Prompt Playground (dev tool) ─────────────────────────────────────────────
+// A read-only prompt-engineering sandbox. Lets the team A/B the reply-generation
+// SYSTEM PROMPT against real sample enquiries. NOTHING here can send: the playground
+// never creates a Decision, never sets a send time, never touches the transport. These
+// tables store the saved prompt versions, the saved run history, and curated test sets.
+
+// A saved version of the editable reply-generation system prompt.
+model PromptVersion {
+  id           String   @id @default(cuid())
+  name         String // human label, e.g. "v6 - ban gushing openers"
+  systemPrompt String // the full edited system prompt
+  note         String? // changelog note: what changed and why
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  runs PlaygroundRun[]
+
+  @@index([createdAt])
+}
+
+// One recorded Playground run: an enquiry put through the pipeline stages with a given
+// prompt, and the resulting draft + per-step outputs + rule scorecard. Snapshots the
+// prompt used so history survives later edits/deletes of the version.
+model PlaygroundRun {
+  id        String  @id @default(cuid())
+  batchId   String? // groups the runs of a single "run across a test set" action
+  enquiryId String
+  enquiry   Enquiry @relation(fields: [enquiryId], references: [id], onDelete: Cascade)
+
+  promptVersionId String?
+  promptVersion   PromptVersion? @relation(fields: [promptVersionId], references: [id], onDelete: SetNull)
+  promptName      String // label of the version/edit used at run time
+  systemPrompt    String // exact system prompt used (snapshot)
+
+  draftBody      String // the generated reply HTML (never sent)
+  shape          String?
+  generatedByLLM Boolean @default(false)
+  wordCount      Int?
+  passCount      Int     @default(0)
+  failCount      Int     @default(0)
+  result         Json // full PlaygroundResult (all stage outputs + scorecard)
+
+  createdAt DateTime @default(now())
+
+  @@index([batchId])
+  @@index([enquiryId])
+  @@index([createdAt])
+}
+
+// A named, curated collection of enquiries to run a prompt across (regression set).
+model PlaygroundTestSet {
+  id         String   @id @default(cuid())
+  name       String
+  enquiryIds String[] @default([])
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 }
 
 // ── Property database ────────────────────────────────────────────────────────

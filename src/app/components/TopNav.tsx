@@ -25,6 +25,12 @@ export default function TopNav() {
         >
           Properties
         </Link>
+        <Link
+          href="/playground"
+          className={`tab ${isActive("/playground") ? "active" : ""}`}
+        >
+          Playground
+        </Link>
       </div>
     </nav>
   );

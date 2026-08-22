@@ -244,6 +244,10 @@ export async function generateReply(params: {
   /** §5.1: the matched listing, resolved once in the pipeline. Pass null to force
    *  "no match"; omit entirely and the generator resolves it itself (direct callers). */
   property?: Property | null;
+  /** Prompt Playground ONLY: override the reply-generation system prompt to A/B a
+   *  prompt version. The live pipeline never passes this, so production is unchanged.
+   *  Everything else (shape, tokens, alternatives, scrubbing) runs exactly as normal. */
+  promptOverride?: { systemPrompt?: string | null };
 }): Promise<GeneratedReply> {
   const { parsed, mailbox, classification } = params;
   // First name for the greeting. Strip stray edge punctuation so "Ji- Chiu" greets as
@@ -344,7 +348,11 @@ export async function generateReply(params: {
     ? ""
     : parsed.aboutApplicant ?? "";
 
-  const systemPrompt = generationConfig.systemPrompt;
+  // Only the system prompt is overridable (Playground). The user-prompt template — the
+  // token scaffold that injects shape/property/alternatives — always comes from config,
+  // so the one variable under test is the house-style ruleset.
+  const systemPrompt =
+    params.promptOverride?.systemPrompt?.trim() || generationConfig.systemPrompt;
   let userPrompt = generationConfig.userPromptTemplate;
   const fills: [string, string][] = [
     ["{{shape}}", shape],
