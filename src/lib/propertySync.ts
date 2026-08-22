@@ -2,10 +2,17 @@ import type { Channel, PropertyStatus, Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
 import { fetchAllProperties, type RawProperty } from "./draperApi";
 
+// INT4 max — our numeric columns are 32-bit. Values above this are always garbage.
+const INT4_MAX = 2_147_483_647;
+
 function toInt(s: string | undefined | null): number | null {
   if (s === undefined || s === null || s === "") return null;
-  const n = parseInt(String(s).replace(/[^0-9-]/g, ""), 10);
-  return Number.isFinite(n) ? n : null;
+  // Keep the decimal point so a float string like "2250.0001333333" parses as ~2250,
+  // NOT "22500001333333" (stripping the "." concatenated the digits and overflowed INT4).
+  const n = Math.round(parseFloat(String(s).replace(/[^0-9.-]/g, "")));
+  if (!Number.isFinite(n)) return null;
+  if (Math.abs(n) > INT4_MAX) return null; // reject out-of-range garbage rather than crash
+  return n;
 }
 
 function toFloat(s: string | undefined | null): number | null {
