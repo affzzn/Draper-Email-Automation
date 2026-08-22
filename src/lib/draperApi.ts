@@ -42,6 +42,8 @@ export interface RawProperty {
   features?: string[];
   description?: string;
   images?: { url?: string; large?: string; medium?: string; thumbnail?: string }[];
+  floorplans?: { url?: string; large?: string; medium?: string; thumbnail?: string }[];
+  epcs?: { url?: string; large?: string; medium?: string; thumbnail?: string }[];
   office?: { name?: string };
   negotiator?: { name?: string };
   [key: string]: unknown;
@@ -56,15 +58,49 @@ export async function fetchAllProperties(perPage = 100): Promise<RawProperty[]> 
   do {
     const url = `${BASE}/wp-json/wp/v2/property?per_page=${perPage}&page=${page}&orderby=modified&order=desc`;
     const res = await fetch(url, {
-      headers: { Accept: "application/json", "User-Agent": "Innate-DraperShadow/1.0 (property sync)" },
+      headers: {
+        Accept: "application/json",
+        // A browser-like UA: some managed hosts serve an HTML block/challenge page to
+        // non-browser agents from datacenter IPs (which is why the Render cron fails with
+        // "Unexpected token '<'"). If the host blocks purely on datacenter IP this won't be
+        // enough on its own — the real fix is to allowlist the sync's egress IP host-side.
+        "User-Agent":
+          process.env.DRAPER_API_UA ||
+          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36",
+      },
     });
     if (!res.ok) {
-      throw new Error(`Property feed ${page} failed: ${res.status} ${res.statusText}`);
+      throw new Error(`Property feed page ${page} failed: ${res.status} ${res.statusText}`);
     }
     if (page === 1) {
       totalPages = Number(res.headers.get("X-WP-TotalPages") || "1");
     }
-    const batch = (await res.json()) as RawProperty[];
+    // Fail LOUDLY and clearly when the body is not JSON. A managed host / WAF that blocks
+    // this IP returns an HTML page with a 200 status, which sails past the res.ok check and
+    // then throws a cryptic `JSON.parse` error. Detect it and surface the real cause + a
+    // snippet so the failure is diagnosable from the cron log.
+    const contentType = res.headers.get("content-type") || "";
+    const text = await res.text();
+    if (!contentType.includes("json") || /^\s*<(?:!doctype|html)/i.test(text)) {
+      const snippet = text.slice(0, 200).replace(/\s+/g, " ").trim();
+      throw new Error(
+        `Property feed page ${page} returned non-JSON (content-type: ${
+          contentType || "none"
+        }). This is almost certainly a WAF/host block page served to this IP, not a real ` +
+          `response. Allowlist the sync's egress IP on Draper's host. Body starts: ${snippet}`
+      );
+    }
+    let batch: RawProperty[];
+    try {
+      batch = JSON.parse(text) as RawProperty[];
+    } catch {
+      throw new Error(
+        `Property feed page ${page}: body was not valid JSON. Body starts: ${text
+          .slice(0, 200)
+          .replace(/\s+/g, " ")
+          .trim()}`
+      );
+    }
     all.push(...batch);
     page++;
   } while (page <= totalPages);

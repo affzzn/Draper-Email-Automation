@@ -56,6 +56,24 @@ function outcodeFrom(postcode: string | undefined): string | null {
   return m ? m[1] : null;
 }
 
+// Recover Draper agency reference tokens (e.g. "DRL260299") from asset filenames. The feed
+// stores `reference_number` as a PRP id for most listings, but the DRL ref that a Rightmove
+// lead carries is embedded in image/floorplan/EPC filenames (…/DRL260299_02.jpg). Indexing
+// these lets a Rightmove DRL lead reference-match a PRP-ref listing. Always includes the
+// reference_number itself so the primary ref is covered too. All uppercased.
+function refAliasesFrom(r: RawProperty): string[] {
+  const assets = [...(r.images ?? []), ...(r.floorplans ?? []), ...(r.epcs ?? [])];
+  const urls = assets.flatMap((a) => [a.url, a.large, a.medium, a.thumbnail]).filter(Boolean) as string[];
+  const set = new Set<string>();
+  for (const u of urls) {
+    // No trailing \b: filenames are like "DRL260299_02.jpg" and "_" is a word char, so a
+    // trailing boundary would fail to match. \d{5,} naturally stops at the "_" separator.
+    for (const m of u.toUpperCase().matchAll(/DRL\d{5,}/g)) set.add(m[0]);
+  }
+  if (r.reference_number) set.add(r.reference_number.toUpperCase());
+  return [...set];
+}
+
 function normalize(r: RawProperty): Prisma.PropertyCreateInput {
   const channel = channelFrom(r.department);
   const postcode = r.address_postcode?.trim() || null;
@@ -67,6 +85,7 @@ function normalize(r: RawProperty): Prisma.PropertyCreateInput {
     slug: r.slug,
     url: r.link,
     reference: r.reference_number || null,
+    refAliases: refAliasesFrom(r),
     channel,
     department: r.department || null,
     status: statusFrom(r.availability, channel),

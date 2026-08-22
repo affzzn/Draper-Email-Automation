@@ -237,6 +237,11 @@ model Property {
   url    String
 
   reference     String? // site reference_number (may differ from portal ref)
+  // Extra reference tokens recovered from image/floorplan/EPC filenames (e.g. "DRL260299").
+  // The feed's `reference_number` is a PRP… id for ~74% of listings, but the Draper agency
+  // ref (DRLxxxxxx) that a Rightmove lead carries is embedded in the asset filenames. We
+  // index those here so a Rightmove DRL lead can still reference-match a PRP-ref listing.
+  refAliases    String[]       @default([])
   channel       Channel        @default(other)
   department    String? // raw e.g. "residential-sales"
   status        PropertyStatus @default(other)

@@ -12,6 +12,10 @@ export interface ParsedEnquiry {
   messageBody: string | null;
   budgetMax: number | null;
   budgetRaw: string | null;
+  // The ENQUIRED property's own asking price as stated by the portal (Rightmove
+  // "PropPrice"), not the applicant's budget. Used to sanity-check a fuzzy property
+  // match: if our matched listing's price diverges from this, the match is wrong.
+  listingPrice: number | null;
   requirements: string | null;
   interestedIn: string | null;
   aboutApplicant: string | null;
@@ -275,6 +279,17 @@ export function portalEnquiryType(text: string): string | null {
   return found.length ? found.join("; ") : null;
 }
 
+// The ENQUIRED listing's own asking price from the portal envelope (Rightmove
+// "PropPrice:£1,695,000"), distinct from the applicant's budget. Bare "Price" is NOT used —
+// it collides with "Price range" (a budget field). Exported so replay can re-derive it from
+// stored raw text (it is not a persisted column).
+export function extractListingPrice(text: string): number | null {
+  const raw = grabLabelled(text, ["PropPrice", "Property price", "Guide price", "Asking price"]);
+  if (!raw) return null;
+  const m = raw.replace(/,/g, "").match(/£?\s*(\d{3,})/);
+  return m ? parseInt(m[1], 10) : null;
+}
+
 export function parseMessage(msg: GraphMessage): ParsedEnquiry {
   const notes: string[] = [];
   const subject = msg.subject ?? "";
@@ -417,6 +432,8 @@ export function parseMessage(msg: GraphMessage): ParsedEnquiry {
     const m = budgetRaw.replace(/,/g, "").match(/£?\s*(\d{3,})/);
     if (m) budgetMax = parseInt(m[1], 10);
   }
+  const listingPrice = extractListingPrice(text);
+
   const requirements = grabLabelled(text, ["Type of property", "Property type wanted"]);
   const interestedIn = grabLabelled(text, ["Interested in", "Must have"]);
   const aboutApplicant = grabLabelled(text, ["About"]);
@@ -449,6 +466,7 @@ export function parseMessage(msg: GraphMessage): ParsedEnquiry {
     messageBody,
     budgetMax,
     budgetRaw,
+    listingPrice,
     requirements,
     interestedIn,
     aboutApplicant,
